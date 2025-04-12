@@ -292,11 +292,11 @@ def load_sc_pitching_velo(year, dir):
     file = dir + f"sc_pitching_velo_{year}.parquet"
     df = None
     try: 
-        df = pd.read_parquet(file) 
+        cdf = pd.read_parquet(file) 
 
     except FileNotFoundError: 
 
-        df = pb.sc_pitcher_exitvelo_barrels({year}, minBBE=1)
+        df = pb.statcast_pitcher_exitvelo_barrels(year, minBBE=1)
 
         drop_columns = [
             'last_name, first_name'
@@ -388,11 +388,74 @@ def load_sc_pitching(year, dir):
     spin_df = load_sc_pitching_spin(year, dir) 
     mvmt_df = load_sc_pitching_mvmt(year, dir) 
 
-    #TODO: collapse and join
-    df = pitching_df.groupby('pitcher_id').agg({
-        'col_name':['sum'], 
-        'col_name2': ['max']
+    agg_dict = { }
+    df = pitching_df.groupby('pitcher').agg({
+        'pitch_type_CH' : ['sum'], 
+        'pitch_type_CS' : ['sum'], 
+        'pitch_type_CU' : ['sum'], 
+        'pitch_type_EP' : ['sum'],
+        'pitch_type_FA' : ['sum'], 
+        'pitch_type_FC' : ['sum'], 
+        'pitch_type_FF' : ['sum'], 
+        'pitch_type_FO' : ['sum'], 
+        'pitch_type_FS' : ['sum'], 
+        'pitch_type_KC' : ['sum'], 
+        'pitch_type_KN' : ['sum'], 
+        'pitch_type_PO' : ['sum'], 
+        'pitch_type_SC' : ['sum'], 
+        'pitch_type_SI' : ['sum'], 
+        'pitch_type_SL' : ['sum'], 
+        'pitch_type_ST' : ['sum'], 
+        'pitch_type_SV' : ['sum'], 
+        #'game_date', we don't have temporal data for other statcast metrics, have to retreat to season-level data :(
+        'release_speed' : ['mean'], 
+        'release_pos_x' : ['mean'], 
+        'release_pos_z' : ['mean'], 
+        #'batter', # interesting but would require a one-hot encoding for all batters and associated sparseness
+        #'pitcher', # group feature
+        'events_catcher_interf' : ['sum'], 
+        'events_double' : ['sum'], 
+        'events_double_play' : ['sum'], 
+        'events_field_error' : ['sum'], 
+        'events_field_out' : ['sum'], 
+        'events_fielders_choice' : ['sum'], 
+        'events_fielders_choice_out' : ['sum'], 
+        'events_force_out' : ['sum'], 
+        'events_grounded_into_double_play' : ['sum'], 
+        'events_hit_by_pitch' : ['sum'], 
+        'events_home_run' : ['sum'], 
+        'events_sac_bunt' : ['sum'], 
+        'events_sac_fly' : ['sum'], 
+        'events_sac_fly_double_play' : ['sum'], 
+        'events_single' : ['sum'], 
+        'events_strikeout' : ['sum'], 
+        'events_strikeout_double_play' : ['sum'], 
+        'events_triple' : ['sum'], 
+        'events_triple_play' : ['sum'], 
+        'events_truncated_pa' : ['sum'], 
+        'events_walk' : ['sum'], 
+        #'events_None', 
+        'description_ball' : ['sum'], 
+        'description_blocked_ball' : ['sum'], 
+        'description_bunt_foul_tip' : ['sum'], 
+        'description_called_strike' : ['sum'], 
+        'description_foul' : ['sum'], 
+        'description_foul_bunt' : ['sum'], 
+        'description_foul_tip' : ['sum'], 
+        'description_hit_by_pitch' : ['sum'], 
+        'description_hit_into_play' : ['sum'], 
+        'description_missed_bunt' : ['sum'], 
+        'description_pitchout' : ['sum'], 
+        'description_swinging_strike' : ['sum'], 
+        'description_swinging_strike_blocked' : ['sum'], 
+        #'zone'
         })
+
+    # groupby creates a column multindex to convey the aggregation method, flatten 
+    # it and use the group feature as the new row index
+    df.columns = df.columns.get_level_values(0)
+    df.reset_index(inplace=True)
+    df.set_index('pitcher')
 
     return df
 
@@ -591,7 +654,16 @@ def load_sc_running(year, dir):
 
     return cdf
 
-def load_sc(year, dir='data/'): 
+def load_standard(year, dir='data/'):
+    
+    std_batting = load_std_batting(year, dir) 
+    std_pitching = load_std_pitching(year, dir)
+
+    # TODO join this and return a df 
+
+    return 
+
+def load_statcast(year, dir='data/'): 
     """
     Load the sc data
     """

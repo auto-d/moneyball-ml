@@ -20,7 +20,7 @@ from sklearn.model_selection import GridSearchCV, train_test_split, KFold, Strat
 from sklearn.pipeline import Pipeline
 from sklearn.datasets import make_classification
 
-from data import load_statcast, load_conventional
+from data import load_statcast, load_standard
 
 # TODO: these have all been rewritten, test
 
@@ -206,8 +206,8 @@ def build_train_set():
     load_statcast(2024)
     load_statcast(2023)
 
-    load_conventional(2023)
-    load_conventional(2023)
+    load_standard(2024)
+    load_standard(2023)
 
     #return make_train_test_sets(train_df, test_df, feature_df)    
 
