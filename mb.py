@@ -186,30 +186,24 @@ def bakeoff(experiments, X_train, y_train, threshold=0.9, visualize=False):
 
     return winners
 
-def make_train_test_sets(train_df, test_df, df):
-    """
-    Merge train and test accounts with cleaned, engineered DF for prediction
-
-    NOTE: repurposed from kaggle comp
-    """
-    train_df = train_df.join(df, how='left', rsuffix="_acc") 
-    X_train = train_df.drop(['label'], axis=1)
-    y_train = train_df['label']
-    X_test = test_df.join(df, how='left')
-
-    return X_train, y_train, X_test 
-
 def build_train_set():
     """
     Load, transform, and apply engineered features, returning the training set
     """
-    load_statcast(2024)
-    load_statcast(2023)
-
-    load_standard(2024)
-    load_standard(2023)
-
-    #return make_train_test_sets(train_df, test_df, feature_df)    
+    
+    # Create training sets for standard and statcast data, holding WAR out as a label
+    std = load_standard(2023)
+    train_y = std['WAR']
+    train_Xstd = std.drop('WAR', axis=1)
+    train_Xsc = load_statcast(2023)    
+    
+    # Repeat for test set
+    std = load_standard(2024)
+    test_y = std['WAR']
+    test_Xstd = std.drop(['WAR'], axis=1)
+    test_Xsc = load_statcast(2024)
+    
+    return train_Xstd, train_Xsc, train_y, test_Xstd, test_Xsc, test_y
 
 def validate(X_train, y_train, candidates, visualize=False, splits=5): 
     """

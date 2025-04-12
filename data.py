@@ -7,15 +7,49 @@ pb.cache.enable()
 # Consolidation of all ingest, processing and cleaning for conventional 
 # and statcast-based metrics 
 
+players = pb.chadwick_register(save=True)
+
 def find_player(id=None, name=None): 
     """
-    Lookup a player name provided an ID, or an ID provided a tuple of (first, last)
+    Lookup a player name provided an ID, or first matching ID provided a tuple 
+    of (<last name>, <first name>)
     """
+    global players
+
     if id is not None:         
         return pb.playerid_reverse_lookup(id)
-    else: 
-        players = pb.chadwick_register(save=True)
-        return players[(players.name_last==name[0]) & (players.name_first==name[1])]
+    else:
+        last = None 
+        first = None
+        if type(name) == str: 
+            # "last, first"
+            last = name.split(sep=',')[0].strip() 
+            first = name.split(sep=',')[1].strip()
+        elif type(name) == tuple: 
+            # (last, first)
+            last = name[0]
+            first = name[1]
+        else:
+            raise ValueError("Unknown type!")
+        
+        mlbid = None
+        match = players[(players.name_last==last) & (players.name_first==first)]
+        if len(match) >= 1: 
+            mlbid = match.iloc[0].key_mlbam
+        return mlbid
+
+def idfg_to_mlb(id): 
+    """
+    Map a Fangraphs player ID to MLB player ID
+    """
+    global players
+
+    mlbid = None
+    match = players[players.key_fangraphs == id]
+    if len(match) >= 1: 
+        mlbid = match.iloc[0].key_mlbam
+    
+    return mlbid
 
 def find_na(df): 
     """
@@ -182,7 +216,7 @@ def load_std_pitching(year, dir='data/'):
 
     except FileNotFoundError: 
             
-        df = pb.pitching_stats(year, min_opp=1)
+        df = pb.pitching_stats(year)
 
         drop_columns = [
             'Season',
@@ -905,6 +939,8 @@ def load_sc_pitching_spin(year, dir):
             'last_name, first_name',
         ]
 
+        df['player_id'] = df['last_name, first_name'].apply(lambda x: find_player(name=x))
+
         cdf = canonicalize_data(
             df, 
             drop_pct=0.01, 
@@ -955,10 +991,7 @@ def load_sc_pitching(year, dir):
     """
     Load and clean statcast pitching data
     """
-    sc_df = load_sc_base(year, dir)
-    velo_df = load_sc_pitching_velo(year, dir)
-    spin_df = load_sc_pitching_spin(year, dir) 
-    mvmt_df = load_sc_pitching_mvmt(year, dir) 
+    sc_df = load_sc_base(year, dir)    
 
     df_pitcher = sc_df.groupby('pitcher').agg({
         'pitch_type_CH' : ['sum'], 
@@ -1028,7 +1061,21 @@ def load_sc_pitching(year, dir):
     df_pitcher.reset_index(inplace=True)
     df_pitcher.set_index('pitcher')
 
-    return df_pitcher
+    velo_df = load_sc_pitching_velo(year, dir)
+    spin_df = load_sc_pitching_spin(year, dir) 
+    mvmt_df = load_sc_pitching_mvmt(year, dir)
+
+    velo_df.set_index('player_id') 
+    spin_df.set_index('player_id') 
+    mvmt_df.set_index('pitcher_id') 
+
+    df = df_pitcher.join(velo_df, how='outer', rsuffix='_drop')
+    df = df.join(spin_df, how='outer', rsuffix='_drop')
+    df = df.join(mvmt_df,  how='outer', rsuffix='_drop')
+
+    df.drop(['player_id_drop'], axis=1, inplace=True)
+
+    return df
 
 def load_sc_batting(year, dir): 
     """
@@ -1285,13 +1332,23 @@ def load_sc_running(year, dir):
     return cdf
 
 def load_standard(year, dir='data/'):
+    """
+    Retrieve the conventional/non-statcast metrics for a given year
+    """
     
     std_batting = load_std_batting(year, dir) 
     std_pitching = load_std_pitching(year, dir)
 
-    # TODO join this and return a df 
+    std_batting.set_index('IDfg')
+    std_pitching.set_index('IDfg')
 
-    return 
+    df = std_batting.join(std_pitching, how='outer', rsuffix="_drop")
+    df['player_id'] = df['IDfg'].apply(lambda x: idfg_to_mlb(x))
+    df.set_index('player_id')
+
+    df.drop(['IDfg_drop', 'IDfg'], axis=1)
+
+    return df
 
 def load_statcast(year, dir='data/'): 
     """
@@ -1317,3 +1374,4 @@ def load_statcast(year, dir='data/'):
     df.fillna(0, inplace=True)
 
     return df
+    
