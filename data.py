@@ -173,6 +173,7 @@ def canonicalize_data(df, drop_pct=0.01, drop=[], onehot=[], ordinal=[], boolean
 def load_std_pitching(year, dir='data/'): 
     """
     Load conventional pitching statistics 
+    See https://library.fangraphs.com/pitching/complete-list-pitching/
     """    
     file = dir + f"std_pitching_{year}.parquet"
     cdf = None
@@ -184,10 +185,334 @@ def load_std_pitching(year, dir='data/'):
         df = pb.pitching_stats(year, min_opp=1)
 
         drop_columns = [
-            'player_name', 
-            ]
+            'Season',
+            'Name',
+            'Team',
+            #'WAR', label 
+            'RAR',
+            'Dollars',
+            'tERA',
+            'xFIP',
+            'WPA',
+            '-WPA',
+            '+WPA',
+            'RE24',
+            'REW',
+            'pLI',
+            'inLI',
+            'gmLI',
+            'exLI',
+            'Pulls',
+            'WPA/LI',
+            'Clutch',
+            'FB% 2',
+            'FBv',
+            'SL%',
+            'SLv',
+            'CT%',
+            'CTv',
+            'CB%',
+            'CBv',
+            'CH%',
+            'CHv',
+            'SF%',
+            'SFv',
+            'KN%',
+            'KNv',
+            'XX%',
+            'PO%',
+            'wFB',
+            'wSL',
+            'wCT',
+            'wCB',
+            'wCH',
+            'wSF',
+            'wKN',
+            'wFB/C',
+            'wSL/C',
+            'wCT/C',
+            'wCB/C',
+            'wCH/C',
+            'wSF/C',
+            'wKN/C',
+            'O-Swing%',
+            'Z-Swing%',
+            'Swing%',
+            'O-Contact%',
+            'Z-Contact%',
+            'Contact%',
+            'Zone%',
+            'F-Strike%',
+            'SwStr%',
+            'HLD',
+            'SD',
+            'MD',
+            'ERA-',
+            'FIP-',
+            'xFIP-',
+            'E-F',
+            'FA% (sc)',
+            'FT% (sc)',
+            'FC% (sc)',
+            'FS% (sc)',
+            'FO% (sc)',
+            'SI% (sc)',
+            'SL% (sc)',
+            'CU% (sc)',
+            'KC% (sc)',
+            'EP% (sc)',
+            'CH% (sc)',
+            'SC% (sc)',
+            'KN% (sc)',
+            'UN% (sc)',
+            'vFA (sc)',
+            'vFT (sc)',
+            'vFC (sc)',
+            'vFS (sc)',
+            'vFO (sc)',
+            'vSI (sc)',
+            'vSL (sc)',
+            'vCU (sc)',
+            'vKC (sc)',
+            'vEP (sc)',
+            'vCH (sc)',
+            'vSC (sc)',
+            'vKN (sc)',
+            'FA-X (sc)',
+            'FT-X (sc)',
+            'FC-X (sc)',
+            'FS-X (sc)',
+            'FO-X (sc)',
+            'SI-X (sc)',
+            'SL-X (sc)',
+            'CU-X (sc)',
+            'KC-X (sc)',
+            'EP-X (sc)',
+            'CH-X (sc)',
+            'SC-X (sc)',
+            'KN-X (sc)',
+            'FA-Z (sc)',
+            'FT-Z (sc)',
+            'FC-Z (sc)',
+            'FS-Z (sc)',
+            'FO-Z (sc)',
+            'SI-Z (sc)',
+            'SL-Z (sc)',
+            'CU-Z (sc)',
+            'KC-Z (sc)',
+            'EP-Z (sc)',
+            'CH-Z (sc)',
+            'SC-Z (sc)',
+            'KN-Z (sc)',
+            'wFA (sc)',
+            'wFT (sc)',
+            'wFC (sc)',
+            'wFS (sc)',
+            'wFO (sc)',
+            'wSI (sc)',
+            'wSL (sc)',
+            'wCU (sc)',
+            'wKC (sc)',
+            'wEP (sc)',
+            'wCH (sc)',
+            'wSC (sc)',
+            'wKN (sc)',
+            'wFA/C (sc)',
+            'wFT/C (sc)',
+            'wFC/C (sc)',
+            'wFS/C (sc)',
+            'wFO/C (sc)',
+            'wSI/C (sc)',
+            'wSL/C (sc)',
+            'wCU/C (sc)',
+            'wKC/C (sc)',
+            'wEP/C (sc)',
+            'wCH/C (sc)',
+            'wSC/C (sc)',
+            'wKN/C (sc)',
+            'O-Swing% (sc)',
+            'Z-Swing% (sc)',
+            'Swing% (sc)',
+            'O-Contact% (sc)',
+            'Z-Contact% (sc)',
+            'Contact% (sc)',
+            'Zone% (sc)',
+            'Pace',
+            'RA9-WAR',
+            'BIP-Wins',
+            'LOB-Wins',
+            'FDP-Wins',
+            'Age Rng',
+            'kwERA',
+            'TTO%',
+            'CH% (pi)',
+            'CS% (pi)',
+            'CU% (pi)',
+            'FA% (pi)',
+            'FC% (pi)',
+            'FS% (pi)',
+            'KN% (pi)',
+            'SB% (pi)',
+            'SI% (pi)',
+            'SL% (pi)',
+            'XX% (pi)',
+            'vCH (pi)',
+            'vCS (pi)',
+            'vCU (pi)',
+            'vFA (pi)',
+            'vFC (pi)',
+            'vFS (pi)',
+            'vKN (pi)',
+            'vSB (pi)',
+            'vSI (pi)',
+            'vSL (pi)',
+            'vXX (pi)',
+            'CH-X (pi)',
+            'CS-X (pi)',
+            'CU-X (pi)',
+            'FA-X (pi)',
+            'FC-X (pi)',
+            'FS-X (pi)',
+            'KN-X (pi)',
+            'SB-X (pi)',
+            'SI-X (pi)',
+            'SL-X (pi)',
+            'XX-X (pi)',
+            'CH-Z (pi)',
+            'CS-Z (pi)',
+            'CU-Z (pi)',
+            'FA-Z (pi)',
+            'FC-Z (pi)',
+            'FS-Z (pi)',
+            'KN-Z (pi)',
+            'SB-Z (pi)',
+            'SI-Z (pi)',
+            'SL-Z (pi)',
+            'XX-Z (pi)',
+            'wCH (pi)',
+            'wCS (pi)',
+            'wCU (pi)',
+            'wFA (pi)',
+            'wFC (pi)',
+            'wFS (pi)',
+            'wKN (pi)',
+            'wSB (pi)',
+            'wSI (pi)',
+            'wSL (pi)',
+            'wXX (pi)',
+            'wCH/C (pi)',
+            'wCS/C (pi)',
+            'wCU/C (pi)',
+            'wFA/C (pi)',
+            'wFC/C (pi)',
+            'wFS/C (pi)',
+            'wKN/C (pi)',
+            'wSB/C (pi)',
+            'wSI/C (pi)',
+            'wSL/C (pi)',
+            'wXX/C (pi)',
+            'O-Swing% (pi)',
+            'Z-Swing% (pi)',
+            'Swing% (pi)',
+            'O-Contact% (pi)',
+            'Z-Contact% (pi)',
+            'Contact% (pi)',
+            'Zone% (pi)',
+            'Pace (pi)',
+            'FRM',
+            'K/9+',
+            'BB/9+',
+            'K/BB+',
+            'H/9+',
+            'HR/9+',
+            'AVG+',
+            'WHIP+',
+            'BABIP+',
+            'LOB%+',
+            'K%+',
+            'BB%+',
+            'LD%+',
+            'GB%+',
+            'FB%+',
+            'HR/FB%+',
+            'Pull%+',
+            'Cent%+',
+            'Oppo%+',
+            'Soft%+',
+            'Med%+',
+            'Hard%+',
+            'EV',
+            'LA',
+            'Barrels',
+            'Barrel%',
+            'maxEV',
+            'HardHit',
+            'HardHit%',
+            'Events',
+            'CStr%',
+            'CSW%',
+            'xERA',
+            'botERA',
+            'botOvr CH',
+            'botStf CH',
+            'botCmd CH',
+            'botOvr CU',
+            'botStf CU',
+            'botCmd CU',
+            'botOvr FA',
+            'botStf FA',
+            'botCmd FA',
+            'botOvr SI',
+            'botStf SI',
+            'botCmd SI',
+            'botOvr SL',
+            'botStf SL',
+            'botCmd SL',
+            'botOvr KC',
+            'botStf KC',
+            'botCmd KC',
+            'botOvr FC',
+            'botStf FC',
+            'botCmd FC',
+            'botOvr FS',
+            'botStf FS',
+            'botCmd FS',
+            'botOvr',
+            'botStf',
+            'botCmd',
+            'botxRV100',
+            'Stf+ CH',
+            'Loc+ CH',
+            'Pit+ CH',
+            'Stf+ CU',
+            'Loc+ CU',
+            'Pit+ CU',
+            'Stf+ FA',
+            'Loc+ FA',
+            'Pit+ FA',
+            'Stf+ SI',
+            'Loc+ SI',
+            'Pit+ SI',
+            'Stf+ SL',
+            'Loc+ SL',
+            'Pit+ SL',
+            'Stf+ KC',
+            'Loc+ KC',
+            'Pit+ KC',
+            'Stf+ FC',
+            'Loc+ FC',
+            'Pit+ FC',
+            'Stf+ FS',
+            'Loc+ FS',
+            'Pit+ FS',
+            'Stuff+',
+            'Location+',
+            'Pitching+',
+            'Stf+ FO',
+            'Loc+ FO',
+            'Pit+ FO',
+        ]
 
-        #TODO: work through columns that need to be normalized and populate above lists
         cdf = canonicalize_data(
             df, 
             drop_pct=0.01, 
@@ -201,7 +526,7 @@ def load_std_batting(year, dir='data/'):
     """
     Load conventional batting statistics 
     """
-    file = dir + f"std_pitching_{year}.parquet"
+    file = dir + f"std_batting_{year}.parquet"
     cdf = None
     try: 
         cdf = pd.read_parquet(file) 
@@ -209,12 +534,263 @@ def load_std_batting(year, dir='data/'):
     except FileNotFoundError: 
             
         df = pb.batting_stats(year, qual=1)
-
+        
         drop_columns = [
-            'player_name', 
-            ]
+            'Season',
+            'Name',
+            'Team',
+            # We discard all post-hoc analysis that incorporates wins and statcast-derived insights
+            'Bat',
+            'Fld',
+            'Rep',
+            'Pos',
+            'RAR',
+            # 'WAR', ... lone exception, this is our label
+            'WPA',
+            '-WPA',
+            '+WPA',
+            'RE24',
+            'REW',
+            'pLI',
+            'phLI',
+            'PH',
+            'WPA/LI',
+            'Clutch',
+            'Dol',
+            'wFB',
+            'wSL',
+            'wCT',
+            'wCB',
+            'wCH',
+            'wSF',
+            'wKN',
+            'wFB/C',
+            'wSL/C',
+            'wCT/C',
+            'wCB/C',
+            'wCH/C',
+            'wSF/C',
+            'wKN/C',
+            'Barrels',
+            'Barrel%',
+            'maxEV',
+            'HardHit',
+            'HardHit%',
+            'Events',
+            'O-Swing%',
+            'Z-Swing%',
+            'Swing%',
+            'O-Contact%',
+            'Z-Contact%',
+            'Contact%',
+            'Zone%',
+            'F-Strike%',
+            'SwStr%',
+            'BsR',
+            'Pace',
+            'Def',
+            'wSB',
+            'UBR',
+            'Age Rng',
+            'Off',
+            'Lg',
+            'wGDP',
+            'Pull%+',   
+            'Cent%+',
+            'Oppo%+',
+            'Soft%+',
+            'Med%+',
+            'Hard%+',
+            'EV',
+            'LA',
+            'CStr%',
+            'CSW%',
+            'xBA',
+            'xSLG',
+            'xwOBA',
+            'wRAA',
+            'L-WAR',
+            'FB% (Pitch)',
+            'FBv',
+            'SL%',
+            'SLv',
+            'CT%',
+            'CTv',
+            'CB%',
+            'CBv',
+            'CH%',
+            'CHv',
+            'SF%',
+            'SFv',
+            'KN%',
+            'KNv',
+            'XX%',
+            'PO%',
+            'wRC',
+            'Spd',
+            'wRC+',
+            'FA% (sc)',
+            'FT% (sc)',
+            'FC% (sc)',
+            'FS% (sc)',
+            'FO% (sc)',
+            'SI% (sc)',
+            'SL% (sc)',
+            'CU% (sc)',
+            'KC% (sc)',
+            'EP% (sc)',
+            'CH% (sc)',
+            'SC% (sc)',
+            'KN% (sc)',
+            'UN% (sc)',
+            'vFA (sc)',
+            'vFT (sc)',
+            'vFC (sc)',
+            'vFS (sc)',
+            'vFO (sc)',
+            'vSI (sc)',
+            'vSL (sc)',
+            'vCU (sc)',
+            'vKC (sc)',
+            'vEP (sc)',
+            'vCH (sc)',
+            'vSC (sc)',
+            'vKN (sc)',
+            'FA-X (sc)',
+            'FT-X (sc)',
+            'FC-X (sc)',
+            'FS-X (sc)',
+            'FO-X (sc)',
+            'SI-X (sc)',
+            'SL-X (sc)',
+            'CU-X (sc)',
+            'KC-X (sc)',
+            'EP-X (sc)',
+            'CH-X (sc)',
+            'SC-X (sc)',
+            'KN-X (sc)',
+            'FA-Z (sc)',
+            'FT-Z (sc)',
+            'FC-Z (sc)',
+            'FS-Z (sc)',
+            'FO-Z (sc)',
+            'SI-Z (sc)',
+            'SL-Z (sc)',
+            'CU-Z (sc)',
+            'KC-Z (sc)',
+            'EP-Z (sc)',
+            'CH-Z (sc)',
+            'SC-Z (sc)',
+            'KN-Z (sc)',
+            'wFA (sc)',
+            'wFT (sc)',
+            'wFC (sc)',
+            'wFS (sc)',
+            'wFO (sc)',
+            'wSI (sc)',
+            'wSL (sc)',
+            'wCU (sc)',
+            'wKC (sc)',
+            'wEP (sc)',
+            'wCH (sc)',
+            'wSC (sc)',
+            'wKN (sc)',
+            'wFA/C (sc)',
+            'wFT/C (sc)',
+            'wFC/C (sc)',
+            'wFS/C (sc)',
+            'wFO/C (sc)',
+            'wSI/C (sc)',
+            'wSL/C (sc)',
+            'wCU/C (sc)',
+            'wKC/C (sc)',
+            'wEP/C (sc)',
+            'wCH/C (sc)',
+            'wSC/C (sc)',
+            'wKN/C (sc)',
+            'O-Swing% (sc)',
+            'Z-Swing% (sc)',
+            'Swing% (sc)',
+            'O-Contact% (sc)',
+            'Z-Contact% (sc)',
+            'Contact% (sc)',
+            'Zone% (sc)',
+            'CH% (pi)',
+            'CS% (pi)',
+            'CU% (pi)',
+            'FA% (pi)',
+            'FC% (pi)',
+            'FS% (pi)',
+            'KN% (pi)',
+            'SB% (pi)',
+            'SI% (pi)',
+            'SL% (pi)',
+            'XX% (pi)',
+            'vCH (pi)',
+            'vCS (pi)',
+            'vCU (pi)',
+            'vFA (pi)',
+            'vFC (pi)',
+            'vFS (pi)',
+            'vKN (pi)',
+            'vSB (pi)',
+            'vSI (pi)',
+            'vSL (pi)',
+            'vXX (pi)',
+            'CH-X (pi)',
+            'CS-X (pi)',
+            'CU-X (pi)',
+            'FA-X (pi)',
+            'FC-X (pi)',
+            'FS-X (pi)',
+            'KN-X (pi)',
+            'SB-X (pi)',
+            'SI-X (pi)',
+            'SL-X (pi)',
+            'XX-X (pi)',
+            'CH-Z (pi)',
+            'CS-Z (pi)',
+            'CU-Z (pi)',
+            'FA-Z (pi)',
+            'FC-Z (pi)',
+            'FS-Z (pi)',
+            'KN-Z (pi)',
+            'SB-Z (pi)',
+            'SI-Z (pi)',
+            'SL-Z (pi)',
+            'XX-Z (pi)',
+            'wCH (pi)',
+            'wCS (pi)',
+            'wCU (pi)',
+            'wFA (pi)',
+            'wFC (pi)',
+            'wFS (pi)',
+            'wKN (pi)',
+            'wSB (pi)',
+            'wSI (pi)',
+            'wSL (pi)',
+            'wXX (pi)',
+            'wCH/C (pi)',
+            'wCS/C (pi)',
+            'wCU/C (pi)',
+            'wFA/C (pi)',
+            'wFC/C (pi)',
+            'wFS/C (pi)',
+            'wKN/C (pi)',
+            'wSB/C (pi)',
+            'wSI/C (pi)',
+            'wSL/C (pi)',
+            'wXX/C (pi)',
+            'O-Swing% (pi)',
+            'Z-Swing% (pi)',
+            'Swing% (pi)',
+            'O-Contact% (pi)',
+            'Z-Contact% (pi)',
+            'Contact% (pi)',
+            'Zone% (pi)',
+            'Pace (pi)',
+        ]
 
-        #TODO: work through columns that need to be normalized and populate above lists
         cdf = canonicalize_data(
             df, 
             drop_pct=0.01, 
@@ -224,19 +800,19 @@ def load_std_batting(year, dir='data/'):
 
     return cdf
 
-def load_sc_pitching_base(year, dir): 
+def load_sc_base(year, dir): 
     """
-    Load and clean pitching data, pulling from the Internet if we haven't already processed 
-    and saved the cleaned data.  
+    Load and clean pitching/hitting data, pulling from the Internet if we haven't already processed 
+    and saved the cleaned data. 
     """
-    file = dir + f"sc_pitching_{year}.parquet"
+    file = dir + f"sc_{year}.parquet"
     cdf = None
     try: 
         cdf = pd.read_parquet(file) 
 
     except FileNotFoundError: 
 
-        df = pb.sc(start_dt=f"{year}-4-1", end_dt=f"{year}-9-30")
+        df = pb.statcast(start_dt=f"{year}-4-1", end_dt=f"{year}-9-30")
 
         drop_columns = [
             'player_name', 
@@ -285,6 +861,7 @@ def load_sc_pitching_base(year, dir):
         cdf.to_parquet(file)
 
     return cdf
+
 def load_sc_pitching_velo(year, dir): 
     """
     Load and clean pitching batted ball data
@@ -323,19 +900,16 @@ def load_sc_pitching_spin(year, dir):
 
         onehot_columns = [ 
             'pitch_hand', 
-
         ]
         drop_columns = [
-            'last_name, first_name'
-            ]
+            'last_name, first_name',
+        ]
 
         cdf = canonicalize_data(
             df, 
             drop_pct=0.01, 
             drop=drop_columns, 
             onehot=onehot_columns)
-        
-        cdf.to_csv(file)
 
     except FileNotFoundError as e: 
         raise e
@@ -371,8 +945,6 @@ def load_sc_pitching_mvmt(year, dir):
             drop_pct=0.01, 
             drop=drop_columns, 
             onehot=onehot_columns)
-        
-        cdf.to_csv(file)
 
     except FileNotFoundError as e: 
         raise e
@@ -383,13 +955,12 @@ def load_sc_pitching(year, dir):
     """
     Load and clean statcast pitching data
     """
-    pitching_df = load_sc_pitching_base(year, dir)
+    sc_df = load_sc_base(year, dir)
     velo_df = load_sc_pitching_velo(year, dir)
     spin_df = load_sc_pitching_spin(year, dir) 
     mvmt_df = load_sc_pitching_mvmt(year, dir) 
 
-    agg_dict = { }
-    df = pitching_df.groupby('pitcher').agg({
+    df_pitcher = sc_df.groupby('pitcher').agg({
         'pitch_type_CH' : ['sum'], 
         'pitch_type_CS' : ['sum'], 
         'pitch_type_CU' : ['sum'], 
@@ -453,46 +1024,86 @@ def load_sc_pitching(year, dir):
 
     # groupby creates a column multindex to convey the aggregation method, flatten 
     # it and use the group feature as the new row index
-    df.columns = df.columns.get_level_values(0)
-    df.reset_index(inplace=True)
-    df.set_index('pitcher')
+    df_pitcher.columns = df_pitcher.columns.get_level_values(0)
+    df_pitcher.reset_index(inplace=True)
+    df_pitcher.set_index('pitcher')
 
-    return df
+    return df_pitcher
 
 def load_sc_batting(year, dir): 
     """
     Load and clean batting data
     """
-    file = dir + f"sc_batting_{year}.parquet"
-    cdf = None
-    try: 
-        cdf = pd.read_parquet(file) 
+    sc_df = load_sc_base(year, dir)
 
-    except FileNotFoundError: 
+    df_batter = sc_df.groupby('batter').agg({
+        'pitch_type_CH' : ['sum'], 
+        'pitch_type_CS' : ['sum'], 
+        'pitch_type_CU' : ['sum'], 
+        'pitch_type_EP' : ['sum'],
+        'pitch_type_FA' : ['sum'], 
+        'pitch_type_FC' : ['sum'], 
+        'pitch_type_FF' : ['sum'], 
+        'pitch_type_FO' : ['sum'], 
+        'pitch_type_FS' : ['sum'], 
+        'pitch_type_KC' : ['sum'], 
+        'pitch_type_KN' : ['sum'], 
+        'pitch_type_PO' : ['sum'], 
+        'pitch_type_SC' : ['sum'], 
+        'pitch_type_SI' : ['sum'], 
+        'pitch_type_SL' : ['sum'], 
+        'pitch_type_ST' : ['sum'], 
+        'pitch_type_SV' : ['sum'], 
+        #'game_date', we don't have temporal data for other statcast metrics, have to retreat to season-level data :(
+        'release_speed' : ['mean'], 
+        'release_pos_x' : ['mean'], 
+        'release_pos_z' : ['mean'], 
+        #'batter', # group feature
+        #'pitcher', # interesting but would require a one-hot encoding for all pitchers and dealing w/ associated sparseness
+        'events_catcher_interf' : ['sum'], 
+        'events_double' : ['sum'], 
+        'events_double_play' : ['sum'], 
+        'events_field_error' : ['sum'], 
+        'events_field_out' : ['sum'], 
+        'events_fielders_choice' : ['sum'], 
+        'events_fielders_choice_out' : ['sum'], 
+        'events_force_out' : ['sum'], 
+        'events_grounded_into_double_play' : ['sum'], 
+        'events_hit_by_pitch' : ['sum'], 
+        'events_home_run' : ['sum'], 
+        'events_sac_bunt' : ['sum'], 
+        'events_sac_fly' : ['sum'], 
+        'events_sac_fly_double_play' : ['sum'], 
+        'events_single' : ['sum'], 
+        'events_strikeout' : ['sum'], 
+        'events_strikeout_double_play' : ['sum'], 
+        'events_triple' : ['sum'], 
+        'events_triple_play' : ['sum'], 
+        'events_truncated_pa' : ['sum'], 
+        'events_walk' : ['sum'], 
+        #'events_None', 
+        'description_ball' : ['sum'], 
+        'description_blocked_ball' : ['sum'], 
+        'description_bunt_foul_tip' : ['sum'], 
+        'description_called_strike' : ['sum'], 
+        'description_foul' : ['sum'], 
+        'description_foul_bunt' : ['sum'], 
+        'description_foul_tip' : ['sum'], 
+        'description_hit_by_pitch' : ['sum'], 
+        'description_hit_into_play' : ['sum'], 
+        'description_missed_bunt' : ['sum'], 
+        'description_pitchout' : ['sum'], 
+        'description_swinging_strike' : ['sum'], 
+        'description_swinging_strike_blocked' : ['sum'], 
+        #'zone'
+        })
 
-        df = pb.sc_batter(start_dt=f"{year}-4-1", end_dt=f"{year}-9-30")
+    # same trick as for pitching aggregation -- flatten multi-index
+    df_batter.columns = df_batter.columns.get_level_values(0)
+    df_batter.reset_index(inplace=True)
+    df_batter.set_index('batter')
 
-        drop_columns = [
-            'player_name', 
-            ]
-        onehot_columns = [
-            ]
-        ordinal_columns = []
-        bool_columns = [
-        ]
-
-        #TODO: work through columns that need to be normalized and populate above lists
-        cdf = canonicalize_data(
-            df, 
-            drop_pct=0.01, 
-            drop=drop_columns, 
-            onehot=onehot_columns, 
-            ordinal=ordinal_columns, 
-            boolean=bool_columns)
-        
-        cdf.to_parquet(file)
-
-    return cdf
+    return df_batter
 
 def load_sc_fielding_cp(year, dir): 
     """
@@ -511,15 +1122,15 @@ def load_sc_fielding_cp(year, dir):
         df = pb.statcast_outfield_catch_prob(year, min_opp=1)
 
         drop_columns = [
-            'player_name', 
+            'last_name, first_name', 
+            'year'
             ]
 
-        #TODO: work through columns that need to be normalized and populate above lists
         cdf = canonicalize_data(
             df, 
             drop_pct=0.01, 
             drop=drop_columns)
-        
+
         cdf.to_parquet(file)
 
     return cdf
@@ -539,44 +1150,48 @@ def load_sc_fielding_jump(year, dir):
         df = pb.statcast_outfielder_jump(year, min_att=1)
 
         drop_columns = [
-            'player_name', 
+            'last_name, first_name',
+            'outs_avove_average',
+            'year'
             ]
 
-        #TODO: work through columns that need to be normalized and populate above lists
         cdf = canonicalize_data(
             df, 
             drop_pct=0.01, 
             drop=drop_columns)
         
+        cdf.rename(columns={"resp_fielder_id": "player_id"}, inplace=True)
+
         cdf.to_parquet(file)
 
     return cdf
 
-def load_sc_catcher_pop(year, dir): 
+def load_sc_catcher_throwing(year, dir): 
     """
-    Load and clean catcher pop time data
+    Load and clean catcher throw data, note this includes
+    pop time metrics - no need for separate poptime df 
     """
 
-    file = dir + f"sc_pop_{year}.parquet"
+    file = dir + f"catcher_throwing_{year}.csv"
+
     cdf = None
     try: 
-        cdf = pd.read_parquet(file) 
+        df = pd.read_csv(file) 
 
-    except FileNotFoundError: 
-            
-        df = pb.statcast_catcher_poptime(year, min_2b_att=1, min_3b_att=1)
-
+        onehot_columns = [ 
+        ]
         drop_columns = [
-            'player_name', 
+            'last_name, first_name'
             ]
 
-        #TODO: work through columns that need to be normalized and populate above lists
         cdf = canonicalize_data(
             df, 
             drop_pct=0.01, 
-            drop=drop_columns)
-        
-        cdf.to_parquet(file)
+            drop=drop_columns, 
+            onehot=onehot_columns)
+
+    except FileNotFoundError as e: 
+        raise e
 
     return cdf
 
@@ -604,6 +1219,8 @@ def load_sc_catcher_framing(year, dir):
             drop_pct=0.01, 
             drop=drop_columns)
         
+        cdf['player_id'] = cdf['player_id'].astype('int32')
+
         cdf.to_parquet(file)
 
     return cdf
@@ -615,16 +1232,23 @@ def load_sc_fielding(year, dir):
 
     cp_df = load_sc_fielding_cp(year, dir)
     jump_df = load_sc_fielding_jump(year, dir)
-    pop_df = load_sc_catcher_pop(year, dir)
+    throwing_df = load_sc_catcher_throwing(year, dir)
     framing_df = load_sc_catcher_framing(year, dir)
 
-    #TODO: collapse and join as needed, presuming this technique works
-    # to yield player-specific results
-    # df = pitching_df.groupby('pitcher_id').agg({
-    #     'col_name':['sum'], 
-    #     'col_name2': ['max']
-    #     })
-    
+    cp_df.set_index('player_id')
+    jump_df.set_index('player_id')
+    throwing_df.set_index('player_id')
+    framing_df.set_index('player_id')
+
+    df = cp_df.join(jump_df, how='outer', rsuffix="_drop")
+    df = df.join(throwing_df, how='outer', rsuffix="_drop")
+    df = df.join(framing_df, how='outer', rsuffix="_drop")
+    df.drop(['player_id_drop'], axis=1, inplace=True)
+
+    # Fill in holes created by above joins
+    df.fillna(0)
+
+    return df
 
 def load_sc_running(year, dir): 
     """
@@ -641,14 +1265,20 @@ def load_sc_running(year, dir):
         df = pb.statcast_sprint_speed(year, min_opp=1)
 
         drop_columns = [
-            'player_name', 
+            'last_name, first_name',
+            'team_id', 
+            'team' 
             ]
+        onehot_columns = [ 
+            'position'
+        ]
 
         #TODO: work through columns that need to be normalized and populate above lists
         cdf = canonicalize_data(
             df, 
             drop_pct=0.01, 
-            drop=drop_columns)
+            drop=drop_columns, 
+            onehot=onehot_columns   )
         
         cdf.to_parquet(file)
 
@@ -667,17 +1297,23 @@ def load_statcast(year, dir='data/'):
     """
     Load the sc data
     """
-    
-    sc = pd.DataFrame()
 
     sc_pitch = load_sc_pitching(year, dir)
     sc_batting = load_sc_batting(year, dir)
     sc_fielding = load_sc_fielding(year, dir)
     sc_running = load_sc_running(year, dir)
 
-    #TODO join all players into one DF, yeah?  this will result in a lot of sparsity, 
-    # perhaps a mixture of models based on how these cluster in low dimensional space
-    # once clustering is complete, eliminate sparse or uninteresting columns based on 
-    # analysis of distributions? 
+    sc_pitch.set_index('pitcher')
+    sc_batting.set_index('batter')
+    sc_fielding.set_index('player_id')
+    sc_running.set_index('player_id')
 
-    return sc
+    df = sc_pitch.join(sc_batting, how='outer', rsuffix='_drop')
+    df = df.join(sc_fielding, how='outer', rsuffix='_drop')
+    df = df.join(sc_running, how='outer', rsuffix='_drop')    
+    df.drop(['pitcher', 'batter', 'player_id_drop'], axis=1, inplace=True)
+    
+    # Fill join holes... 
+    df.fillna(0, inplace=True)
+
+    return df
