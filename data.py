@@ -1348,6 +1348,8 @@ def load_standard(year, dir='data/'):
 
     df.drop(['IDfg_drop', 'IDfg'], axis=1)
 
+    df.fillna(0, inplace=True)
+
     return df
 
 def load_statcast(year, dir='data/'): 
@@ -1368,10 +1370,12 @@ def load_statcast(year, dir='data/'):
     df = sc_pitch.join(sc_batting, how='outer', rsuffix='_drop')
     df = df.join(sc_fielding, how='outer', rsuffix='_drop')
     df = df.join(sc_running, how='outer', rsuffix='_drop')    
-    df.drop(['pitcher', 'batter', 'player_id_drop'], axis=1, inplace=True)
-    
+    df.drop(['pitcher', 'batter', 'player_id_drop'], axis=1, inplace=True)    
+
     # Fill join holes... 
     df.fillna(0, inplace=True)
+
+    df['player_id'] = df['player_id'].astype('int32')
 
     return df
     

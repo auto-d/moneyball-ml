@@ -186,7 +186,7 @@ def bakeoff(experiments, X_train, y_train, threshold=0.9, visualize=False):
 
     return winners
 
-def build_train_set():
+def build_train_test_set():
     """
     Load, transform, and apply engineered features, returning the training set
     """
@@ -337,7 +337,7 @@ def cluster_search(splits=3, visualize=False):
     NOTE: repurposed from kaggle comp
     TODO: ensure this can reduce down to the monolithic search by requesting a single cluster
     """    
-    X_train, y_train, X_test = build_train_set()
+    train_Xstd, train_Xsc, train_y, test_Xstd, test_Xsc, test_y = build_train_test_set() 
     
     # Leverage the low-dimensional feature and associated label to isolate prominent sub-distributions 
     # and fit an experiment(pipeline) tailored to classify each
@@ -375,7 +375,7 @@ def main(**args):
     parser.set_defaults(visualize=False)
     args = parser.parse_args()
     
-    build_train_set()
+    cluster_search()
     #cluster_search(int(args.splits))
     
     #parser.print_help()
