@@ -1,7 +1,7 @@
-import numpy as nbp 
+import numpy as np 
 from torch import nn
 import torch.nn.functional as F
-from torch.utils.data import Dataset 
+from torch.utils.data import Dataset, DataLoader
 from skorch import NeuralNetRegressor
 
 class WARNet(nn.Module): 
@@ -13,9 +13,9 @@ class WARNet(nn.Module):
         super().__init__()
 
         # TODO: calculate the input size and test this
-        self.input_size = n_input * 2
+        self.input_size = n_input
         self.output_size = 1
-        self.hidden = nn.Linear(self.input_size, n_hidden1)
+        self.hidden1 = nn.Linear(self.input_size, n_hidden1)
 
         if n_hidden2: 
             self.hidden2 = nn.Linear(n_hidden1, n_hidden2)
@@ -39,75 +39,52 @@ class WARNet(nn.Module):
         x = self.hidden1(x) 
         x = F.relu(x)
         
-        if self.hidden is not None: 
+        if self.hidden2 is not None: 
             x = self.hidden2(x)
             x = F.relu(x) 
         
         x = self.out(x) 
         
-        return x
+        return x.flatten()
     
 class MBDataset(Dataset): 
     """
     Custom pytorch-compatible dataset. Adapted from 
     https://pytorch.org/tutorials/beginner/basics/data_tutorial.html#creating-a-custom-dataset-for-your-files
     """
-
-    ## TODO adapt this to our training setup
-
-    def __init__(self, feature_df): 
-
-        self.feature_df = feature_df
+    def __init__(self, feature_df, labels): 
+        """
+        Initialize our custome pytorch dataset
+        """
+        
+        self.X = feature_df
+        self.y = labels
 
     def __len__(self): 
+        """
+        Retrieve the length of the dataset
+        """
         
-        # TODO compute the lenth of ... what? 
-        return len(self.img_labels) 
+        return len(self.X) 
     
     def __getitem__(self, idx): 
-                
+        """
+        Retrieve the item at the provided index!
+
+        NOTE: a dataset resulting from repeated calls to this fucntion will 
+        be provided to our forward pass! this signature should match what's expected there
+        """
+        row = self.X.iloc[idx]
+        X = row.to_numpy().astype(np.float32)
+        y = self.y.iloc[idx]
         
-        # TODO figure out what we return here ... a row and a label? in an array of bytes? 
-        return row, label 
+        return X, y
     
-def get_data_loader(batch_size=5): 
+def get_data_loader(feature_df, labels, batch_size=5): 
     """
-    Retrieve a pytorch-style dataloader 
+    Retrieve a pytorch-style dataloader ... unclear if we need this with skorch. 
     """
-    data = MBDataset()
-    loader = torch.utils.data.DataLoader(data, batch_size=batch_size, shuffle=True)
+    data = MBDataset(feature_df, labels)
+    loader = DataLoader(data, batch_size=batch_size, shuffle=True)
     
     return loader
-
-# TODO: remove, mining any residual clues in the process, skorch will handle this for us
-def train(loader, net, iterations=2):
-    """
-    Train the model with the provided dataset
-    """
-    criterion = nn.CrossEntropyLoss()
-    optimizer = optim.SGD(net.parameters(), lr=0.001, momentum=0.9)
-
-    for epoch in range(iterations):  # loop over the dataset multiple times
-
-        running_loss = 0.0
-        for i, data in enumerate(loader, 0):
-
-            # get the inputs; data is a list of [inputs, labels]
-            inputs, labels = data
-
-            # zero the parameter gradients
-            optimizer.zero_grad()
-
-            # forward + backward + optimize
-            outputs = net(inputs)
-            loss = criterion(outputs, labels)
-            loss.backward()
-            optimizer.step()
-
-            # print statistics
-            running_loss += loss.item()
-            if i % 20 == 19:  
-                print(f"[{epoch + 1}, {i + 1:5d}] loss: {running_loss / 2000:.3f}")
-                running_loss = 0.0
-    
-    return "Training complete!"

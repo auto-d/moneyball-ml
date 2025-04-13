@@ -16,14 +16,14 @@ from sklearn.linear_model import LinearRegression, Lasso, Ridge
 from sklearn.svm import SVR
 from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
 from sklearn.neighbors import KNeighborsClassifier
-from sklearn.model_selection import GridSearchCV, train_test_split, KFold, StratifiedKFold
+from sklearn.model_selection import GridSearchCV, train_test_split, KFold
 from sklearn.pipeline import Pipeline
 import torch.optim as optim
 from torch.nn import MSELoss 
 from torch.optim import SGD
 from skorch import NeuralNetRegressor 
-from data import load_statcast, load_standard
-from nn import WARNet
+from data import load_statcast, load_standard, find_na
+from nn import WARNet, MBDataset
 
 def scale(df, range=(0,1), omit=[]):
     """
@@ -146,21 +146,6 @@ def visualize_results_2d(viz_df, cluster_centers, title, c_filter=None):
 
     plt.show()
 
-def get_model_from_experiment(experiment):
-    """
-    Retrieve the model from a fit pipeline (we use a specific tag to ID them)
-
-    NOTE: repurposed from kaggle comp
-    """
-    if 'model' in experiment.named_steps.keys():
-        model = experiment.named_steps['model']
-    elif 'grid' in experiment.named_steps.keys(): 
-        model = experiment.named_steps['grid'].best_estimator_
-    else: 
-        raise ValueError("Cannot extract estimator from pipeline!")
-
-    return model 
-
 def build_train_test_set(standard=True, statcast=True):
     """
     Load, transform, and apply engineered features, returning the training set. 
@@ -184,7 +169,7 @@ def build_train_test_set(standard=True, statcast=True):
 
     sc23 = load_statcast(2023) if statcast else None
     sc24 = load_statcast(2024) if statcast else None
-
+    
     if standard and not statcast:
         X_train = std23.drop(['WAR'], axis=1)
         X_test = std24.drop(['WAR'], axis=1)
@@ -198,8 +183,15 @@ def build_train_test_set(standard=True, statcast=True):
         X_test = std24.drop(['WAR'], axis=1)
         X_test = X_test.join(sc24, how="left")
     
-    if len(X_train) != len(y_train) or len(X_test) != len(y_test): 
+    if len(X_train) != len(y_train) or len(X_test) != len(y_test) or (len(X_train.columns) != len(X_test.columns)):
         raise ValueError("Inconsistent data and label lengths, aborting run!")
+
+    X_train.fillna(0., inplace=True)
+    X_test.fillna(0., inplace=True)
+
+    # Canary 
+    find_na(X_train)
+    find_na(X_test)
 
     return X_train, y_train, X_test, y_test
 
@@ -216,18 +208,14 @@ def evaluate(experiments, X_train, y_train, threshold=0.2, visualize=False):
 
     for i, experiment in enumerate(experiments):         
 
-        ## TODO: this will just shove the pandas bytes into the forward method of our neural network
-        #  -- need to implement a custom dataset, as we did for shaperx? 
-        # https://pytorch.org/tutorials/beginner/basics/data_tutorial.html#creating-a-custom-dataset-for-your-files
-        if 'model' in experiment.named_steps.keys():
+        # If the estimator in the experiment is a neural network, instantiate a torch Dataset to 
+        # maximize our control over the skorch data transformation, otherwise pass DF as is 
+        if 'nn' in experiment.named_steps.keys(): 
+            dataset = MBDataset(X_train, y_train)
+            experiment.fit(dataset)
+        else: 
             experiment.fit(X_train, y_train)
             preds = experiment.predict(X_train)
-        elif 'nn' in experiment.named_steps.keys(): 
-            #TODO: push the output of our MBDataset into t he network here
-            #nn_data = MBDataset()
-            #experiment.fit(  )
-            #preds = experiment.predict( ..)
-            pass
 
         mse = metrics.mean_squared_error(y_train, preds)
 
@@ -248,56 +236,66 @@ def validate(X_train, y_train, candidates, visualize=False, splits=5):
     Validate the candidate experiments (sklearn pipelines) with cross validation
     and return a winner. 
     """
-    kf = StratifiedKFold(n_splits=splits, shuffle=False)
+    kf = KFold(n_splits=splits, shuffle=False)
 
     winner_mae = None
     winner = None
     
     for candidate in candidates: 
 
-        mae = None
+        mse = None
         for train_ix, test_ix in kf.split(X_train, y_train):            
-            candidate.fit(X_train.iloc[train_ix], y_train.iloc[train_ix])
-        
-            preds = candidate.predict(X_train.iloc[test_ix])
+            
+            preds = None 
 
-            fold_mae = metrics.mean_squared_error(y_train.iloc[test_ix], preds)
-            mae = (mae if mae is not None else 0) + fold_mae/splits
+            # NN-specific dataset transformation required before train/predict here
+            if 'nn' in candidate.named_steps.keys(): 
+                trainset = MBDataset(X_train.iloc[train_ix], y_train.iloc[train_ix])
+                testset = MBDataset(X_train.iloc[test_ix], y_train.iloc[test_ix])
+                candidate.fit(trainset) 
+                preds = candidate.predict(testset)
+            else: 
+                candidate.fit(X_train.iloc[train_ix], y_train.iloc[train_ix])
+                preds = candidate.predict(X_train.iloc[test_ix])
 
-        print(f"======== \nCandidate {get_model_from_experiment(candidate)}: {mae}\n")
+            fold_mse = metrics.mean_squared_error(y_train.iloc[test_ix], preds)
+            mse = (mse if mse is not None else 0) + fold_mse/splits
+
+        print(f"======== \nCandidate {get_model_from_experiment(candidate)}: {mse}\n")
         
         if visualize: 
             # TODO: fix - this isn't classification based and the PCA support functions were refactored
             preds = candidate.predict(X_train)
 
             viz_df, centroids = project_results_2d(X_train, y_train, preds, threshold=0.5, clusters=5)
-            visualize_results_2d(viz_df, centroids, title=f"Model: {str(get_model_from_experiment(candidate))} @ {mae}", c_filter=None)
+            visualize_results_2d(viz_df, centroids, title=f"Model: {str(get_model_from_experiment(candidate))} @ {mse}", c_filter=None)
         
-        if winner_mae > mae: 
-            winner_mae = mae 
+        if (winner_mae is None) or (winner_mae > mse):
+            winner_mae = mse 
             winner = candidate 
     
     return winner, winner_mae
 
-class WARRegressor(NeuralNetRegressor): 
+# class WARRegressor(NeuralNetRegressor): 
 
-    def __init__():
-        super().__init__(
-            module=WARNet, 
-            criterion=MSELoss, 
-            optimizer=SGD, 
-            nnmax_epochs=10, 
-            lr=0.1, 
-            module__n_input=100, 
-            module__n_hidden1=10, 
-            iterator_train__shuffle=True)
-        return 
+#     def __init__():
+#         super().__init__(
+#             module=WARNet, 
+#             criterion=MSELoss, 
+#             optimizer=SGD, 
+#             nnmax_epochs=10, 
+#             lr=0.1, 
+#             #TODO: where do we pass momentum? check docs
+#             #momentum=0.5
+#             module__n_input=100, 
+#             module__n_hidden1=10, 
+#             iterator_train__shuffle=True)
+#         return 
     
 lr_hparams = { 'alpha' : [2**x for x in range(0,10,1) ] }
 sv_hparams = { 'C' : [0.2, 0.4], 'kernel' : ['poly', 'rbf' ] }
 rf_hparams = { 'min_samples_leaf' : range(1,11,5), 'n_estimators': range(20,100,40), 'max_depth': range(5,25,10)}
 gb_hparams = { 'loss' : ['squared_error', 'absolute_error'], 'learning_rate' : [(0.1 * 10 ** x) for x in range(0, 4)]}
-#TODO: YIKES ... skorch seemed like the ticket, but how do we prep our data and fire it into the NN if we use gridsearch/skorch? 
 nn_hparams = { 
     'max_epochs' : range(5,20,5), 
     # Learning rate is technically an argument to the optimizer, and could be passed as 
@@ -313,41 +311,67 @@ nn_hparams = {
     # TODO: reenable this when GPUs are available? 
     #'device': 'cuda'
     }
-# TODO: Dataset can only be passed to the skorch estimator as a parameter to fit... this seems
-# clunky if we're using gridsearch ... we should just pass more elegantly packed data to 
-# fit(X) --- NO! this is super elegant actually, just pass an instance of our Dataset to 
-# fit in liue of hte dataframe
 
-# Our experiment register. This will grow and shrink as experiments are run and models and the 
-# preferred hyperparameters are identified. 
-#
-# NOTE estimators must be tagged w/ 'model' or 'grid' for GridSearch to enable recovery of 
-# optimal models for post-evaluation re-training 
-# TODO: introduce PCA here, regardless of whether it's running at a higher level to find optimal models  
-#Pipeline([('scaler', StandardScaler()), ('pca', PCA(n_components=12)), ('grid', GridSearchCV(?, ?, error_score=-1))]),
-experiments = [
-    Pipeline([('model', DummyRegressor())]), # Control
-    Pipeline([('grid', GridSearchCV(LinearRegression(), {}, n_jobs=-1, error_score=-1))]),
-    #Pipeline([('grid', GridSearchCV(Ridge(), lr_hparams, n_jobs=-1, error_score=-1))]), # best: alpha = 2
-    #Pipeline([('grid', GridSearchCV(Lasso(), lr_hparams, n_jobs=-1, error_score=-1))]), 
-    #Pipeline([('poly', PolynomialFeatures()), ('grid', GridSearchCV(LinearRegression(), {}, n_jobs=-1, error_score=-1))]), # ! bestest!
-    #Pipeline([('scaler', StandardScaler()), ('grid', GridSearchCV(SVR(), sv_hparams, n_jobs=-1, error_score=-1))]),
-    #Pipeline([('scaler', StandardScaler()), ('poly', PolynomialFeatures()), ('grid', GridSearchCV(SVR(), sv_hparams, n_jobs=-1, error_score=-1))]),
-    #Pipeline([('grid', GridSearchCV(RandomForestRegressor(), rf_hparams, n_jobs=-1,error_score=-1))]),
-    #Pipeline([('grid', GridSearchCV(GradientBoostingRegressor(), gb_hparams, n_jobs=-1,error_score=-1))]),
-    Pipeline([('nn', NeuralNetRegressor(module=WARNet, criterion=MSELoss, optimizer=SGD, max_epochs=10, lr=0.1, module__n_input=100, module__n_hidden1=10, iterator_train__shuffle=True))]),
-    # TODO: addPCA transform before NN estimator here to
-    # Need a new cue here to handle grid search on a neural network? 
-    #Pipeline([('??', GridSearchCV(NeuralNetRegressor(module=WARNet), nn_hparams, n_jobs=-1,error_score=-1))]),
-    # TODO: use SkorchDoctor for nn training insights and **plots**, see https://skorch.readthedocs.io/en/stable/user/neuralnet.html#diagnosing-problems-during-training
-]
+def get_model_from_experiment(experiment):
+    """
+    Retrieve the model from a fit pipeline (we use a specific tag to ID them)
+
+    NOTE: repurposed from kaggle comp
+    """
+    if 'model' in experiment.named_steps.keys():
+        model = experiment.named_steps['model']
+    elif 'grid' in experiment.named_steps.keys(): 
+        model = experiment.named_steps['grid'].best_estimator_
+    elif 'nn' in experiment.named_steps.keys():
+        model = experiment.named_steps['nn'] 
+    else: 
+        raise ValueError("Cannot extract estimator from pipeline!")
+
+    return model 
+
+def generate_experiments(nn_input_size=None):
+    """
+    Wrap the creation of our static experiment manifest, and aandle any dynamic aspects of experiment setup. Return an 
+    list of experiments to run. 
+    
+    This register will grow and shrink as experiments are run and models (w/ preferred hyperparameters) are identified. 
+    
+    NOTE estimators must be tagged as follows to enable optimal model recovery and dataset assembly
+     - 'model' for individual sklearn estimators 
+     - 'grid' for GridSearch'd estimators
+     - 'nn' for skorch/pytorch neural network estimators
+    """
+
+    # TODO: introduce PCA here, regardless of whether it's running at a higher level to find optimal models  
+    # Pipeline([('scaler', StandardScaler()), ('pca', PCA(n_components=12)), ('grid', GridSearchCV(?, ?, error_score=-1))]),
+
+    experiments = [
+        Pipeline([('model', DummyRegressor())]), # Control
+        Pipeline([('grid', GridSearchCV(LinearRegression(), {}, n_jobs=-1, error_score=-1))]),
+        #Pipeline([('grid', GridSearchCV(Ridge(), lr_hparams, n_jobs=-1, error_score=-1))]), # best: alpha = 2
+        #Pipeline([('grid', GridSearchCV(Lasso(), lr_hparams, n_jobs=-1, error_score=-1))]), 
+        #Pipeline([('poly', PolynomialFeatures()), ('grid', GridSearchCV(LinearRegression(), {}, n_jobs=-1, error_score=-1))]), # ! bestest!
+        #Pipeline([('scaler', StandardScaler()), ('grid', GridSearchCV(SVR(), sv_hparams, n_jobs=-1, error_score=-1))]),
+        #Pipeline([('scaler', StandardScaler()), ('poly', PolynomialFeatures()), ('grid', GridSearchCV(SVR(), sv_hparams, n_jobs=-1, error_score=-1))]),
+        #Pipeline([('grid', GridSearchCV(RandomForestRegressor(), rf_hparams, n_jobs=-1,error_score=-1))]),
+        #Pipeline([('grid', GridSearchCV(GradientBoostingRegressor(), gb_hparams, n_jobs=-1,error_score=-1))]),
+        Pipeline([('nn', NeuralNetRegressor(module=WARNet, criterion=MSELoss, optimizer=SGD, max_epochs=30, lr=0.5, module__n_input=nn_input_size, module__n_hidden1=10, batch_size=1, iterator_train__shuffle=True))]),
+        #Pipeline([('nn', NeuralNetRegressor(module=WARNet, criterion=MSELoss, optimizer=SGD, max_epochs=15, lr=0.1, module__n_input=nn_input_size, module__n_hidden1=10, iterator_train__shuffle=True))]),
+        # TODO: addPCA transform before NN estimator here to
+        # Need a new cue here to handle grid search on a neural network? 
+        #Pipeline([('??', GridSearchCV(NeuralNetRegressor(module=WARNet), nn_hparams, n_jobs=-1,error_score=-1))]),
+        # TODO: use SkorchDoctor for nn training insights and **plots**, see https://skorch.readthedocs.io/en/stable/user/neuralnet.html#diagnosing-problems-during-training
+    ]
+
+    return experiments
 
 def search(X_train, y_train, splits=3, visualize=False):  
     """
     Perform a hyperparameter and model search across all promising algorithms
     """
-    global experiments 
+
     min_loss = 0.5
+    experiments = generate_experiments(nn_input_size=len(X_train.columns))
     candidates = evaluate(experiments, X_train, y_train, min_loss, False)
 
     # Find a winning experiment - note there is some redundancy here given the test/train split 

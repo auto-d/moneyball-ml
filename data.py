@@ -51,16 +51,21 @@ def idfg_to_mlb(id):
     
     return mlbid
 
-def find_na(df): 
+def find_na(df, raise_=True): 
     """
     Track down any elusive NA values
 
     NOTE: this is a utilty function I wrote for the Kaggle comp
     """
+    errors = False 
+
     for col in df.columns: 
         na = len(df[df[col].isna()])
         if na > 0: 
-            raise ValueError(f"{df}/{col} has {na} na values!") 
+            print(f"{col} has {na} na values!") 
+
+    if errors and raise_: 
+        raise ValueError("NaNs encountered! See above logs.")
 
 def sum_by_index(df): 
     """
@@ -101,7 +106,7 @@ def onehot_feature(df, column):
 
     return new_df
 
-def canonicalize_data(df, drop_pct=0.01, drop=[], onehot=[], ordinal=[], boolean=[]): 
+def canonicalize_data(df, drop_pct=0.01, drop=[], onehot=[], ordinal=[], boolean=[], log=False): 
     """
     One-stop data cleaning operation to streamline large dataframe ingest from MLB data sources. 
 
@@ -117,64 +122,68 @@ def canonicalize_data(df, drop_pct=0.01, drop=[], onehot=[], ordinal=[], boolean
        updating the lists on future calls
     """
 
+    def print_(str): 
+        if log: 
+            print(f"{column} (type={type_}):")
+
     dfc = pd.DataFrame(index=df.index)
     rows = len(df) 
     for type_, column in zip(df.dtypes, df.columns): 
         
-        print(f"{column} (type={type_}):")
+        print_(f"{column} (type={type_}):")
 
         # Drop where needed
         if column in drop: 
-            print(' - dropping due to presence in drop list')
+            print_(' - dropping due to presence in drop list')
         elif column.endswith("_deprecated"): 
-            print(" - dropping due to '_deprecated' suffix")
+            print_(" - dropping due to '_deprecated' suffix")
         else: 
             # Flag nans, and if they are less than a certain percentage of the DF, just drop the 
             # rows outright before attempting conversion.
             nans = df[column].isna().sum() 
             if nans != 0: 
-                print(f" - {nans} nans present!")
+                print_(f" - {nans} nans present!")
                 if nans/rows <= drop_pct: 
-                    print(f" - <= {drop_pct*100}% of values, dropping affected rows!")
+                    print_(f" - <= {drop_pct*100}% of values, dropping affected rows!")
                     not_na = ~df[column].isna()
                     df = df[not_na]
                     dfc = dfc[not_na]
                     nans = 0 
                 else: 
-                    print(f" - >{drop_pct*100}% of values, ignoring!")
+                    print_(f" - >{drop_pct*100}% of values, ignoring!")
                     
             # Map each column over to a new DF, converting as needed to support downstream modeling
             if column in boolean: 
                 dfc[column] = df[column].apply(lambda x: 0 if pd.isna(x) else 1) 
             elif pd.api.types.is_datetime64_ns_dtype(type_): 
                 dfc[column] = pd.to_numeric(df[column])
-                print(' - converted to int')
+                print_(' - converted to int')
             elif pd.api.types.is_float(type_) or pd.api.types.is_float_dtype(type_) or type_ == np.float64: 
                 if nans:
-                    print(' - ❗️ WARNING: filling nans with 0!')
+                    print_(' - ❗️ WARNING: filling nans with 0!')
                     df[column] = df[column].fillna(0)
                 dfc[column] = df[column].astype(np.float32)
-                print(' - converted to float')
+                print_(' - converted to float')
             elif pd.api.types.is_int64_dtype(type_) or type_ == np.int64:
                 if nans:
-                    print(' - ❗️ WARNING: filling nans with 0.0!')
+                    print_(' - ❗️ WARNING: filling nans with 0.0!')
                     df[column] = df[column].fillna(0)
                 dfc[column] = df[column].astype(np.int32)
-                print(' - converted to int')
+                print_(' - converted to int')
             elif pd.api.types.is_string_dtype(type_) or type_ == str: 
                 if column in onehot: 
                     onehot_df = onehot_feature(df, column)
                     dfc = pd.concat([dfc, onehot_df], axis=1)
-                    print(f" - one-hot encoding") 
+                    print_(f" - one-hot encoding") 
                     if nans: 
-                        print(" - ❗️ WARNING nans converted to 0 for all new features")
+                        print_(" - ❗️ WARNING nans converted to 0 for all new features")
                 elif column in ordinal: 
                     # TODO: nans? 
                     dfc[column] = ordinal_feature(df, column)
-                    print(f" - ordinal encoding!")                
+                    print_(f" - ordinal encoding!")                
                 else: 
-                    print(f" - feature not found in encode list, dropping!")
-                    print(f" - feature values = {df[column].unique()}")
+                    print_(f" - feature not found in encode list, dropping!")
+                    print_(f" - feature values = {df[column].unique()}")
             else: 
                 raise ValueError(f"Unknown type encountered ({type_}), can't process dataframe!")
 
@@ -1231,6 +1240,7 @@ def load_sc_catcher_framing(year, dir):
 
         drop_columns = [
             'player_name', 
+            'year'
             ]
 
         #TODO: work through columns that need to be normalized and populate above lists
@@ -1320,10 +1330,12 @@ def load_standard(year, dir='data/'):
     std_pitching.set_index('IDfg', inplace=True)
 
     df = std_batting.join(std_pitching, how='outer', rsuffix="_drop")
+    df = df[~df.player_id.isna()]
     df.set_index('player_id', inplace=True)
 
-    df.fillna(0, inplace=True)
+    df.fillna(0, inplace=True)    
 
+    find_na(df)
     return df
 
 def load_statcast(year, dir='data/'): 
@@ -1343,5 +1355,6 @@ def load_statcast(year, dir='data/'):
     # Fill join holes... 
     df.fillna(0, inplace=True)
 
+    find_na(df)
     return df
     
