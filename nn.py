@@ -1,6 +1,7 @@
 import numpy as nbp 
 from torch import nn
 import torch.nn.functional as F
+from torch.utils.data import Dataset 
 from skorch import NeuralNetRegressor
 
 class WARNet(nn.Module): 
@@ -36,3 +37,68 @@ class WARNet(nn.Module):
         
         x = self.out(x) 
         return x
+    
+class MBDataset(Dataset): 
+    """
+    Custom pytorch-compatible dataset. Adapted from 
+    https://pytorch.org/tutorials/beginner/basics/data_tutorial.html#creating-a-custom-dataset-for-your-files
+    """
+
+    ## TODO adapt this to our training setup
+
+    def __init__(self, feature_df): 
+
+        self.feature_df = feature_df
+
+    def __len__(self): 
+        
+        # TODO compute the lenth of ... what? 
+        return len(self.img_labels) 
+    
+    def __getitem__(self, idx): 
+                
+        
+        # TODO figure out what we return here ... a row and a label? in an array of bytes? 
+        return row, label 
+    
+def get_data_loader(batch_size=5): 
+    """
+    Retrieve a pytorch-style dataloader 
+    """
+    data = MBDataset()
+    loader = torch.utils.data.DataLoader(data, batch_size=batch_size, shuffle=True)
+    
+    return loader
+
+# TODO: remove, mining any residual clues in the process, skorch will handle this for us
+def train(loader, net, iterations=2):
+    """
+    Train the model with the provided dataset
+    """
+    criterion = nn.CrossEntropyLoss()
+    optimizer = optim.SGD(net.parameters(), lr=0.001, momentum=0.9)
+
+    for epoch in range(iterations):  # loop over the dataset multiple times
+
+        running_loss = 0.0
+        for i, data in enumerate(loader, 0):
+
+            # get the inputs; data is a list of [inputs, labels]
+            inputs, labels = data
+
+            # zero the parameter gradients
+            optimizer.zero_grad()
+
+            # forward + backward + optimize
+            outputs = net(inputs)
+            loss = criterion(outputs, labels)
+            loss.backward()
+            optimizer.step()
+
+            # print statistics
+            running_loss += loss.item()
+            if i % 20 == 19:  
+                print(f"[{epoch + 1}, {i + 1:5d}] loss: {running_loss / 2000:.3f}")
+                running_loss = 0.0
+    
+    return "Training complete!"

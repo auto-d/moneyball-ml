@@ -18,6 +18,7 @@ from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.model_selection import GridSearchCV, train_test_split, KFold, StratifiedKFold
 from sklearn.pipeline import Pipeline
+import torch.optim as optim
 from skorch import NeuralNetRegressor 
 from data import load_statcast, load_standard
 from nn import WARNet
@@ -209,9 +210,18 @@ def evaluate(experiments, X_train, y_train, threshold=0.2, visualize=False):
     winners = []
 
     for i, experiment in enumerate(experiments):         
-        experiment.fit(X_train, y_train)
-        
-        preds = experiment.predict(X_train)
+
+        ## TODO: this will just shove the pandas bytes into the forward method of our neural network
+        #  -- need to implement a custom dataset, as we did for shaperx? 
+        # https://pytorch.org/tutorials/beginner/basics/data_tutorial.html#creating-a-custom-dataset-for-your-files
+        if 'model' in experiment.named_steps.keys():
+            experiment.fit(X_train, y_train)
+            preds = experiment.predict(X_train)
+        elif 'nn' in experiment.named_steps.keys(): 
+            #TODO: push the output of our MBDataset into t he network here
+            nn_data = MBDataset()
+            experiment.fit(  )
+            preds = experiment.predict( ..)
 
         mse = metrics.mean_squared_error(y_train, preds)
 
@@ -268,7 +278,14 @@ sv_hparams = { 'C' : [0.2, 0.4], 'kernel' : ['poly', 'rbf' ] }
 rf_hparams = { 'min_samples_leaf' : range(1,11,5), 'n_estimators': range(20,100,40), 'max_depth': range(5,25,10)}
 gb_hparams = { 'loss' : ['squared_error', 'absolute_error'], 'learning_rate' : [(0.1 * 10 ** x) for x in range(0, 4)]}
 #TODO: YIKES ... skorch seemed like the ticket, but how do we prep our data and fire it into the NN if we use gridsearch/skorch? 
-nn_hparams = { 'max_epochs' : range(5,20,5), 'lr': [0.1, 0.2, 0.3], 'module__n_input': 1000, 'module__n_hidden1': range(10,100,15), 'module__n_hidden2': [5, 10] }
+nn_hparams = { 
+    'max_epochs' : range(5,20,5), 
+    'lr': [0.1, 0.2, 0.3], 
+    'optimizer': [ optim.SGD, optim.Adam ], 
+    'module__n_input': 1000, 
+    'module__n_hidden1': range(10,100,15), 
+    'module__n_hidden2': [5, 10] 
+    }
 
 # Our experiment register. This will grow and shrink as experiments are run and models and the 
 # preferred hyperparameters are identified. 
@@ -280,15 +297,16 @@ nn_hparams = { 'max_epochs' : range(5,20,5), 'lr': [0.1, 0.2, 0.3], 'module__n_i
 experiments = [
     Pipeline([('model', DummyRegressor())]), # Control
     Pipeline([('grid', GridSearchCV(LinearRegression(), {}, n_jobs=-1, error_score=-1))]),
-    Pipeline([('grid', GridSearchCV(Ridge(), lr_hparams, n_jobs=-1, error_score=-1))]), # best: alpha = 2
-    Pipeline([('grid', GridSearchCV(Lasso(), lr_hparams, n_jobs=-1, error_score=-1))]), 
-    Pipeline([('poly', PolynomialFeatures()), ('grid', GridSearchCV(LinearRegression(), {}, n_jobs=-1, error_score=-1))]), # ! bestest!
-    Pipeline([('scaler', StandardScaler()), ('grid', GridSearchCV(SVR(), sv_hparams, n_jobs=-1, error_score=-1))]),
-    Pipeline([('scaler', StandardScaler()), ('poly', PolynomialFeatures()), ('grid', GridSearchCV(SVR(), sv_hparams, n_jobs=-1, error_score=-1))]),
-    Pipeline([('grid', GridSearchCV(RandomForestRegressor(), rf_hparams, n_jobs=-1,error_score=-1))]),
-    Pipeline([('grid', GridSearchCV(GradientBoostingRegressor(), gb_hparams, n_jobs=-1,error_score=-1))]),
-    Pipeline([('model', NeuralNetRegressor(WARNet, max_epochs=10, lr=0.1, iterator_train__shuffle=True))]),
-    Pipeline([('model', GridSearchCV(NeuralNetRegressor(module=WARNet), nn_hparams, n_jobs=-1,error_score=-1))]),
+    #Pipeline([('grid', GridSearchCV(Ridge(), lr_hparams, n_jobs=-1, error_score=-1))]), # best: alpha = 2
+    #Pipeline([('grid', GridSearchCV(Lasso(), lr_hparams, n_jobs=-1, error_score=-1))]), 
+    #Pipeline([('poly', PolynomialFeatures()), ('grid', GridSearchCV(LinearRegression(), {}, n_jobs=-1, error_score=-1))]), # ! bestest!
+    #Pipeline([('scaler', StandardScaler()), ('grid', GridSearchCV(SVR(), sv_hparams, n_jobs=-1, error_score=-1))]),
+    #Pipeline([('scaler', StandardScaler()), ('poly', PolynomialFeatures()), ('grid', GridSearchCV(SVR(), sv_hparams, n_jobs=-1, error_score=-1))]),
+    #Pipeline([('grid', GridSearchCV(RandomForestRegressor(), rf_hparams, n_jobs=-1,error_score=-1))]),
+    #Pipeline([('grid', GridSearchCV(GradientBoostingRegressor(), gb_hparams, n_jobs=-1,error_score=-1))]),
+    Pipeline([('nn', NeuralNetRegressor(WARNet(100,10,2), max_epochs=10, lr=0.1, iterator_train__shuffle=True))]),
+    # Need a new cue here to handle grid search on a neural network? 
+    Pipeline([('??', GridSearchCV(NeuralNetRegressor(module=WARNet), nn_hparams, n_jobs=-1,error_score=-1))]),
 ]
 
 def search(X_train, y_train, splits=3, visualize=False):  
