@@ -1036,15 +1036,15 @@ def load_sc_pitching(year, dir):
     # it and use the group feature as the new row index
     df_pitcher.columns = df_pitcher.columns.get_level_values(0)
     df_pitcher.reset_index(inplace=True)
-    df_pitcher.set_index('pitcher')
+    df_pitcher.set_index('pitcher', inplace=True)
 
     velo_df = load_sc_pitching_velo(year, dir)
     spin_df = load_sc_pitching_spin(year, dir) 
     mvmt_df = load_sc_pitching_mvmt(year, dir)
 
-    velo_df.set_index('player_id') 
-    spin_df.set_index('player_id') 
-    mvmt_df.set_index('pitcher_id') 
+    velo_df.set_index('player_id', inplace=True) 
+    spin_df.set_index('player_id', inplace=True) 
+    mvmt_df.set_index('pitcher_id', inplace=True) 
 
     df = df_pitcher.join(velo_df, how='outer', rsuffix='_drop')
     df = df.join(spin_df, how='outer', rsuffix='_drop')
@@ -1125,7 +1125,7 @@ def load_sc_batting(year, dir):
     # same trick as for pitching aggregation -- flatten multi-index
     df_batter.columns = df_batter.columns.get_level_values(0)
     df_batter.reset_index(inplace=True)
-    df_batter.set_index('batter')
+    df_batter.set_index('batter', inplace=True)
 
     return df_batter
 
@@ -1259,10 +1259,10 @@ def load_sc_fielding(year, dir):
     throwing_df = load_sc_catcher_throwing(year, dir)
     framing_df = load_sc_catcher_framing(year, dir)
 
-    cp_df.set_index('player_id')
-    jump_df.set_index('player_id')
-    throwing_df.set_index('player_id')
-    framing_df.set_index('player_id')
+    cp_df.set_index('player_id', inplace=True)
+    jump_df.set_index('player_id', inplace=True)
+    throwing_df.set_index('player_id', inplace=True)
+    framing_df.set_index('player_id', inplace=True)
 
     df = cp_df.join(jump_df, how='outer', rsuffix="_drop")
     df = df.join(throwing_df, how='outer', rsuffix="_drop")
@@ -1270,7 +1270,7 @@ def load_sc_fielding(year, dir):
     df.drop(['player_id_drop'], axis=1, inplace=True)
 
     # Fill in holes created by above joins
-    df.fillna(0)
+    df.fillna(0, inplace=True)
 
     return df
 
@@ -1316,12 +1316,12 @@ def load_standard(year, dir='data/'):
     std_batting = load_std_batting(year, dir) 
     std_pitching = load_std_pitching(year, dir)
 
-    std_batting.set_index('IDfg')
-    std_pitching.set_index('IDfg')
+    std_batting.set_index('IDfg', inplace=True)
+    std_pitching.set_index('IDfg', inplace=True)
 
     df = std_batting.join(std_pitching, how='outer', rsuffix="_drop")
     df['player_id'] = df['IDfg'].apply(lambda x: idfg_to_mlb(x))
-    df.set_index('player_id')
+    df.set_index('player_id', inplace=True)
 
     df.drop(['IDfg_drop', 'IDfg'], axis=1)
 
@@ -1339,10 +1339,10 @@ def load_statcast(year, dir='data/'):
     sc_fielding = load_sc_fielding(year, dir)
     sc_running = load_sc_running(year, dir)
 
-    sc_pitch.set_index('pitcher')
-    sc_batting.set_index('batter')
-    sc_fielding.set_index('player_id')
-    sc_running.set_index('player_id')
+    sc_pitch.set_index('pitcher', inplace=True)
+    sc_batting.set_index('batter', inplace=True)
+    sc_fielding.set_index('player_id', inplace=True)
+    sc_running.set_index('player_id', inplace=True)
 
     df = sc_pitch.join(sc_batting, how='outer', rsuffix='_drop')
     df = df.join(sc_fielding, how='outer', rsuffix='_drop')
@@ -1353,6 +1353,8 @@ def load_statcast(year, dir='data/'):
     df.fillna(0, inplace=True)
 
     df['player_id'] = df['player_id'].astype('int32')
+
+    df.set_index('player_id', inplace=True)
 
     return df
     

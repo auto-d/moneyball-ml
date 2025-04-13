@@ -19,6 +19,8 @@ from sklearn.neighbors import KNeighborsClassifier
 from sklearn.model_selection import GridSearchCV, train_test_split, KFold, StratifiedKFold
 from sklearn.pipeline import Pipeline
 import torch.optim as optim
+from torch.nn import MSELoss 
+from torch.optim import SGD
 from skorch import NeuralNetRegressor 
 from data import load_statcast, load_standard
 from nn import WARNet
@@ -191,10 +193,10 @@ def build_train_test_set(standard=True, statcast=True):
         X_test = sc24
     else: 
         # TODO: test joins 
-        X_train = std23.drop(['WAR'], axis=1)        
-        X_train.join(sc23, how="inner", inplace=True)
+        X_train = std23.drop(['WAR'], axis=1)                        
+        X_train = X_train.join(sc23, how="inner")
         X_test = std24.drop(['WAR'], axis=1)
-        X_test.join(sc24, how="inner", inplace=True)
+        X_test = X_test.join(sc24, how="inner")
     
     return X_train, y_train, X_test, y_test
 
@@ -219,9 +221,10 @@ def evaluate(experiments, X_train, y_train, threshold=0.2, visualize=False):
             preds = experiment.predict(X_train)
         elif 'nn' in experiment.named_steps.keys(): 
             #TODO: push the output of our MBDataset into t he network here
-            nn_data = MBDataset()
-            experiment.fit(  )
-            preds = experiment.predict( ..)
+            #nn_data = MBDataset()
+            #experiment.fit(  )
+            #preds = experiment.predict( ..)
+            pass
 
         mse = metrics.mean_squared_error(y_train, preds)
 
@@ -273,6 +276,20 @@ def validate(X_train, y_train, candidates, visualize=False, splits=5):
     
     return winner, winner_mae
 
+class WARRegressor(NeuralNetRegressor): 
+
+    def __init__():
+        super().__init__(
+            module=WARNet, 
+            criterion=MSELoss, 
+            optimizer=SGD, 
+            nnmax_epochs=10, 
+            lr=0.1, 
+            module__n_input=100, 
+            module__n_hidden1=10, 
+            iterator_train__shuffle=True)
+        return 
+    
 lr_hparams = { 'alpha' : [2**x for x in range(0,10,1) ] }
 sv_hparams = { 'C' : [0.2, 0.4], 'kernel' : ['poly', 'rbf' ] }
 rf_hparams = { 'min_samples_leaf' : range(1,11,5), 'n_estimators': range(20,100,40), 'max_depth': range(5,25,10)}
@@ -280,12 +297,23 @@ gb_hparams = { 'loss' : ['squared_error', 'absolute_error'], 'learning_rate' : [
 #TODO: YIKES ... skorch seemed like the ticket, but how do we prep our data and fire it into the NN if we use gridsearch/skorch? 
 nn_hparams = { 
     'max_epochs' : range(5,20,5), 
+    # Learning rate is technically an argument to the optimizer, and could be passed as 
+    # optimizer__lr here, but skorch implements a convenient due to the frequent need to 
+    # set the LR. 
     'lr': [0.1, 0.2, 0.3], 
     'optimizer': [ optim.SGD, optim.Adam ], 
     'module__n_input': 1000, 
     'module__n_hidden1': range(10,100,15), 
-    'module__n_hidden2': [5, 10] 
+    'module__n_hidden2': [5, 10], 
+    # GridSearch implements cross validation, disable skorch internal holdout for validation
+    'train_split': None, 
+    # TODO: reenable this when GPUs are available? 
+    #'device': 'cuda'
     }
+# TODO: Dataset can only be passed to the skorch estimator as a parameter to fit... this seems
+# clunky if we're using gridsearch ... we should just pass more elegantly packed data to 
+# fit(X) --- NO! this is super elegant actually, just pass an instance of our Dataset to 
+# fit in liue of hte dataframe
 
 # Our experiment register. This will grow and shrink as experiments are run and models and the 
 # preferred hyperparameters are identified. 
@@ -304,9 +332,11 @@ experiments = [
     #Pipeline([('scaler', StandardScaler()), ('poly', PolynomialFeatures()), ('grid', GridSearchCV(SVR(), sv_hparams, n_jobs=-1, error_score=-1))]),
     #Pipeline([('grid', GridSearchCV(RandomForestRegressor(), rf_hparams, n_jobs=-1,error_score=-1))]),
     #Pipeline([('grid', GridSearchCV(GradientBoostingRegressor(), gb_hparams, n_jobs=-1,error_score=-1))]),
-    Pipeline([('nn', NeuralNetRegressor(WARNet(100,10,2), max_epochs=10, lr=0.1, iterator_train__shuffle=True))]),
+    Pipeline([('nn', NeuralNetRegressor(module=WARNet, criterion=MSELoss, optimizer=SGD, max_epochs=10, lr=0.1, module__n_input=100, module__n_hidden1=10, iterator_train__shuffle=True))]),
+    # TODO: addPCA transform before NN estimator here to
     # Need a new cue here to handle grid search on a neural network? 
-    Pipeline([('??', GridSearchCV(NeuralNetRegressor(module=WARNet), nn_hparams, n_jobs=-1,error_score=-1))]),
+    #Pipeline([('??', GridSearchCV(NeuralNetRegressor(module=WARNet), nn_hparams, n_jobs=-1,error_score=-1))]),
+    # TODO: use SkorchDoctor for nn training insights and **plots**, see https://skorch.readthedocs.io/en/stable/user/neuralnet.html#diagnosing-problems-during-training
 ]
 
 def search(X_train, y_train, splits=3, visualize=False):  
@@ -314,8 +344,8 @@ def search(X_train, y_train, splits=3, visualize=False):
     Perform a hyperparameter and model search across all promising algorithms
     """
     global experiments 
-
-    candidates = evaluate(experiments, X_train, y_train, 0.5, False)
+    min_loss = 0.5
+    candidates = evaluate(experiments, X_train, y_train, min_loss, False)
 
     # Find a winning experiment - note there is some redundancy here given the test/train split 
     # done implicitly in all of our parameter search efforts in the experiment 'manifest'. However, 
@@ -323,7 +353,10 @@ def search(X_train, y_train, splits=3, visualize=False):
     # to ensure they are perpetually considered. In these cases it's essential for the below validation 
     # step, lest we accidentally nominate models above that hasn't undergone recent cross validation. 
     winner, mse = validate(X_train, y_train, candidates, visualize, splits)
-    print(f"Best model identified: {get_model_from_experiment(winner)} (mse: {mse}).")
+    if winner is not None: 
+        print(f"Best model identified: {get_model_from_experiment(winner)} (mse: {mse}).")
+    else: 
+        print(f"No model performance exceeded provided threshold ({min_loss})! ")
 
     return winner, mse
 
@@ -331,7 +364,7 @@ def monolithic_search(splits=3, visualize=False):
     """
     Look for a single algorithm to maximize performance across all features
     """
-    X_train, y_train, X_test, y_test = build_train_test_set(standard=True, statcast=False) 
+    X_train, y_train, X_test, y_test = build_train_test_set(standard=True, statcast=True) 
     winner, mae = search(X_train, y_train, splits=splits, visualize=visualize)
     
     # TODO: predict on the test set and check performance! below needs to be refactored 

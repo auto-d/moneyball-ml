@@ -27,6 +27,14 @@ class WARNet(nn.Module):
     def forward(self, x): 
         """
         Forward pass for our network
+
+        NOTE: the input/x here is the X passed to fit() in the skl pipeline. the skorch 
+        torch.utils.data.Dataset will interpret a pandas dataset conveniently, but passes
+        the columns here as named parameters (so a named param for every value in X.columns)
+
+        NOTE: the (first) object returned will be cast to np.ndarray and returned 
+        from `predict` by skorch. i.e. this *is* our predict function in the sklearn
+        pipeline and the return value must abide conversion to an np array. 
         """
         x = self.hidden1(x) 
         x = F.relu(x)
@@ -36,6 +44,7 @@ class WARNet(nn.Module):
             x = F.relu(x) 
         
         x = self.out(x) 
+        
         return x
     
 class MBDataset(Dataset): 
