@@ -193,11 +193,14 @@ def build_train_test_set(standard=True, statcast=True):
         X_test = sc24
     else: 
         # TODO: test joins 
-        X_train = std23.drop(['WAR'], axis=1)                        
-        X_train = X_train.join(sc23, how="inner")
+        X_train = std23.drop(['WAR'], axis=1)
+        X_train = X_train.join(sc23, how="left")
         X_test = std24.drop(['WAR'], axis=1)
-        X_test = X_test.join(sc24, how="inner")
+        X_test = X_test.join(sc24, how="left")
     
+    if len(X_train) != len(y_train) or len(X_test) != len(y_test): 
+        raise ValueError("Inconsistent data and label lengths, aborting run!")
+
     return X_train, y_train, X_test, y_test
 
 @ignore_warnings(category=ConvergenceWarning)

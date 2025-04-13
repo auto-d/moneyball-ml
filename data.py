@@ -1040,32 +1040,13 @@ def load_sc_pitching(year, dir):
 
     velo_df = load_sc_pitching_velo(year, dir)
     spin_df = load_sc_pitching_spin(year, dir)     
-    mvmt_df = load_sc_pitching_mvmt(year, dir)
-
+    
     velo_df.set_index('player_id', inplace=True) 
     spin_df['player_id'] = spin_df['player_id'].astype('int32')
     spin_df.set_index('player_id', inplace=True) 
-    mvmt_df.drop([
-        'pitch_type_CU', 
-        'pitch_type_FC', 
-        'pitch_type_KN', 
-        'pitch_type_SC', 
-        'pitch_type_FS', 
-        'pitch_type_SV', 
-        'pitch_type_CH', 
-        'pitch_type_ST', 
-        'pitch_type_SL', 
-        'pitch_type_SI', 
-        'pitch_type_FO', 
-        'pitch_type_FF'
-        ], 
-        axis=1, 
-        inplace=True)
-    mvmt_df.set_index('pitcher_id', inplace=True) 
 
     df = df_pitcher.join(velo_df, how='inner', rsuffix='_drop')
     df = df.join(spin_df, how='inner', rsuffix='_drop')
-    #df = df.join(mvmt_df,  how='inner', rsuffix='_drop')
 
     return df
 
