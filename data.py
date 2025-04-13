@@ -62,18 +62,6 @@ def find_na(df):
         if na > 0: 
             raise ValueError(f"{df}/{col} has {na} na values!") 
 
-def scale(df, range=(0,1), omit=[]):
-    """
-    Scale a column into a given range, omitting one or more columns if provided 
-    
-    NOTE: this is a utilty function I wrote for the Kaggle comp
-    """
-    for column in df.columns: 
-        if column not in omit: 
-            df[column] = min_max_scale(df, column, (0,1))
-
-    return df
-
 def sum_by_index(df): 
     """
     Sum a (hopefully numeric) DF by it's index and return it
@@ -112,17 +100,6 @@ def onehot_feature(df, column):
     new_df = pd.DataFrame(encoder.transform(df[[column]]).toarray(), columns=columns, index=df.index) 
 
     return new_df
-
-def min_max_scale(df, column, range=(0,1)): 
-    """
-    Scale a column in a DF to the provided range     
-
-    NOTE: this is a utilty function I wrote for the Kaggle comp
-    """
-    scaler = MinMaxScaler(feature_range=range)
-    scaled = scaler.fit_transform(df[[column]]) 
-    return scaled.transpose()[0]
-
 
 def canonicalize_data(df, drop_pct=0.01, drop=[], onehot=[], ordinal=[], boolean=[]): 
     """

@@ -5,29 +5,51 @@ import pandas as pd
 import numpy as np 
 import matplotlib.pyplot as plt
 import seaborn as sns
-from sklearn.preprocessing import OrdinalEncoder, OneHotEncoder, MinMaxScaler, StandardScaler, PolynomialFeatures
+from sklearn.preprocessing import MinMaxScaler, StandardScaler, PolynomialFeatures
 from sklearn import metrics
 from sklearn.utils._testing import ignore_warnings
 from sklearn.exceptions import ConvergenceWarning
 from sklearn.decomposition import PCA
 from sklearn.cluster import KMeans, DBSCAN
-from sklearn.dummy import DummyClassifier, DummyRegressor
-from sklearn.linear_model import LogisticRegression, Lasso, Ridge
-from sklearn.ensemble import RandomForestClassifier, VotingClassifier
-from sklearn.svm import SVC
+from sklearn.dummy import DummyRegressor
+from sklearn.linear_model import LinearRegression, Lasso, Ridge
+from sklearn.svm import SVR
+from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.model_selection import GridSearchCV, train_test_split, KFold, StratifiedKFold
 from sklearn.pipeline import Pipeline
-from sklearn.datasets import make_classification
-
+from skorch import NeuralNetRegressor 
 from data import load_statcast, load_standard
+from nn import WARNet
+
+def scale(df, range=(0,1), omit=[]):
+    """
+    Scale a column into a given range, omitting one or more columns if provided 
+    
+    NOTE: utilty function written for the Kaggle comp
+    """
+    for column in df.columns: 
+        if column not in omit: 
+            df[column] = min_max_scale(df, column, (0,1))
+
+    return df
+
+def min_max_scale(df, column, range=(0,1)): 
+    """
+    Scale a column in a DF to the provided range     
+
+    NOTE: utilty written for the Kaggle comp
+    """
+    scaler = MinMaxScaler(feature_range=range)
+    scaled = scaler.fit_transform(df[[column]]) 
+    return scaled.transpose()[0]
 
 # TODO: these have all been rewritten, test
 
 def pca(df, components=2): 
     """
     Compress the provided dataframe into n dimensions, returning the new dims 
-    as columsn in a D
+    as columns in a new dataframe 
     
     Note scaling is implicit
     """
@@ -69,27 +91,12 @@ def dbscan(df, eps=0.5, min_samples=10):
 
     return df_cluster
 
-def categorize_prediction(label, pred): 
-    """
-    What the name says 
-
-    NOTE: this is a utilty function I wrote for the Kaggle comp
-    """
-    if label and pred: 
-        return "TP"
-    elif label and not pred: 
-        return "FN"
-    elif not label and pred: 
-        return "FP"
-    elif not label and not pred: 
-        return "TN"
-
 # TODO: rewrite with the new methods above
 def project_results_2d(X_train, y_train, probs, threshold=0.5, clusters=8): 
     """
     Use PCA to prepare a flattened version of the training data and our performance on the TRAINING data predictions
 
-    NOTE: this is a utilty function I wrote for the Kaggle comp
+    NOTE: utilty function written for the Kaggle comp
     """
     X_train_2d, cluster_centers = apply_pca2(X_train, clusters)
     
@@ -107,7 +114,7 @@ def visualize_results_2d(viz_df, cluster_centers, title, c_filter=None):
     Plot the 2d visualization, optionally with cluster centroids and/or a cluster 
     centroid filter
 
-    NOTE: this is a utilty function I wrote for the Kaggle comp
+    NOTE: this is a utilty function written for the Kaggle comp
     """
     if c_filter is not None and c_filter != []: 
         viz_df = viz_df[viz_df['cluster'].isin(c_filter)]
@@ -136,7 +143,6 @@ def visualize_results_2d(viz_df, cluster_centers, title, c_filter=None):
 
     plt.show()
 
-
 def get_model_from_experiment(experiment):
     """
     Retrieve the model from a fit pipeline (we use a specific tag to ID them)
@@ -152,195 +158,184 @@ def get_model_from_experiment(experiment):
 
     return model 
 
+def build_train_test_set(standard=True, statcast=True):
+    """
+    Load, transform, and apply engineered features, returning the training set. 
+
+    We can either assemble the sets from standard data, statcast or both (but not 
+    neither :p )
+    """
+    if not standard and not statcast: 
+        raise ValueError("One of standard or statcast must be True")
+    
+    X_train = pd.DataFrame()
+
+    # Create training sets for standard and statcast data, holding WAR out as a label
+    # regardless of which dataset(s) will be used
+    std23 = load_standard(2023)
+    std24 = load_standard(2024)
+
+    y_train = std23['WAR']
+    y_test = std24['WAR']    
+
+    sc23 = load_statcast(2023) if statcast else None
+    sc24 = load_statcast(2024) if statcast else None
+
+    if standard and not statcast:
+        X_train = std23.drop(['WAR'], axis=1)
+        X_test = std24.drop(['WAR'], axis=1)
+    elif statcast and not standard: 
+        X_train = sc23
+        X_test = sc24
+    else: 
+        # TODO: test joins 
+        X_train = std23.drop(['WAR'], axis=1)        
+        X_train.join(sc23, how="inner", inplace=True)
+        X_test = std24.drop(['WAR'], axis=1)
+        X_test.join(sc24, how="inner", inplace=True)
+    
+    return X_train, y_train, X_test, y_test
+
 @ignore_warnings(category=ConvergenceWarning)
-def bakeoff(experiments, X_train, y_train, threshold=0.9, visualize=False): 
+def evaluate(experiments, X_train, y_train, threshold=0.2, visualize=False): 
     """
-    Iterate over various options, looking for an optimal model given the data. This 
-    function expects all cross-validation to happen within the model pipeline. 
+    Search for optimal models. No internal cross validation is performed unless it's
+    implicit in the provided experiment pipeline execution. Ensure validation happens outside 
+    of this process for models that don't incorporate validation into the associated pipeline.
 
-    Returns the experiments (sklearn pipelines) whose AUROC exceeded the provided threshold. 
-
-    NOTE: repurposed from kaggle comp
+    Returns the experiments (sklearn pipelines) whose error falls below the provided threshold
     """
-    winners = []    
+    winners = []
 
     for i, experiment in enumerate(experiments):         
         experiment.fit(X_train, y_train)
         
-        probs = None 
-        if hasattr(experiment, 'predict_proba'): 
-            probs = experiment.predict_proba(X_train)[:,1]
-        elif hasattr(experiment, 'predict'):
-            probs = experiment.predict(X_train)
+        preds = experiment.predict(X_train)
 
-        roc = metrics.roc_auc_score(y_train, probs)
+        mse = metrics.mean_squared_error(y_train, preds)
 
-        print(f"==== \nExperiment {i}: {roc}\n")
+        print(f"==== \nExperiment {i}: {mse}\n")
 
-        if roc > threshold: 
+        if mse < threshold: 
             winners.append(experiment)
     
         if visualize: 
-            viz_df, centroids = project_results_2d(X_train, y_train, probs, threshold=0.5, clusters=5)
+            # TODO: fix this  
+            viz_df, centroids = project_results_2d(X_train, y_train, preds, threshold=0.5, clusters=5)
             visualize_results_2d(viz_df, centroids, title=f"Pipeline {i}, Model: {str(get_model_from_experiment(experiment))}", c_filter=[])
 
     return winners
 
-def build_train_test_set():
-    """
-    Load, transform, and apply engineered features, returning the training set
-    """
-    
-    # Create training sets for standard and statcast data, holding WAR out as a label
-    std = load_standard(2023)
-    train_y = std['WAR']
-    train_Xstd = std.drop('WAR', axis=1)
-    train_Xsc = load_statcast(2023)    
-    
-    # Repeat for test set
-    std = load_standard(2024)
-    test_y = std['WAR']
-    test_Xstd = std.drop(['WAR'], axis=1)
-    test_Xsc = load_statcast(2024)
-    
-    return train_Xstd, train_Xsc, train_y, test_Xstd, test_Xsc, test_y
-
 def validate(X_train, y_train, candidates, visualize=False, splits=5): 
     """
-    Validate the candidate experiments with cross validation and return a winner
-
-    NOTE: repurposed from kaggle comp
+    Validate the candidate experiments (sklearn pipelines) with cross validation
+    and return a winner. 
     """
     kf = StratifiedKFold(n_splits=splits, shuffle=False)
 
-    winner_roc = 0
+    winner_mae = None
     winner = None
     
-    # Iterate over the candidate models and evalute on k folds of the data
     for candidate in candidates: 
 
-        roc = 0 
+        mae = None
         for train_ix, test_ix in kf.split(X_train, y_train):            
             candidate.fit(X_train.iloc[train_ix], y_train.iloc[train_ix])
         
-            probs = None 
-            if hasattr(candidate, 'predict_proba'): 
-                probs = candidate.predict_proba(X_train.iloc[test_ix])[:,1]
-            elif hasattr(candidate, 'predict'):
-                probs = candidate.predict(X_train.iloc[test_ix])
+            preds = candidate.predict(X_train.iloc[test_ix])
 
-            fold_roc = metrics.roc_auc_score(y_train.iloc[test_ix], probs)
-            roc += fold_roc/splits
+            fold_mae = metrics.mean_squared_error(y_train.iloc[test_ix], preds)
+            mae = (mae if mae is not None else 0) + fold_mae/splits
 
-        # Retrain in preparation for visualization or submission
-        print(f"======== \nCandidate {get_model_from_experiment(candidate)}: {roc}\n")
-        candidate.fit(X_train, y_train)
+        print(f"======== \nCandidate {get_model_from_experiment(candidate)}: {mae}\n")
         
-        # If we're going to plot, we need updated predictions
         if visualize: 
-            probs = None 
-            if hasattr(candidate, 'predict_proba'): 
-                probs = candidate.predict_proba(X_train)[:,1]
-            elif hasattr(candidate, 'predict'):
-                probs = candidate.predict(X_train)
+            # TODO: fix - this isn't classification based and the PCA support functions were refactored
+            preds = candidate.predict(X_train)
 
-            viz_df, centroids = project_results_2d(X_train, y_train, probs, threshold=0.5, clusters=5)
-            visualize_results_2d(viz_df, centroids, title=f"Model: {str(get_model_from_experiment(candidate))} @ {roc}", c_filter=None)
+            viz_df, centroids = project_results_2d(X_train, y_train, preds, threshold=0.5, clusters=5)
+            visualize_results_2d(viz_df, centroids, title=f"Model: {str(get_model_from_experiment(candidate))} @ {mae}", c_filter=None)
         
-        if winner_roc < roc: 
-            winner_roc = roc 
+        if winner_mae > mae: 
+            winner_mae = mae 
             winner = candidate 
     
-    return winner, winner_roc
+    return winner, winner_mae
 
-lr_hparams = { 'penalty' : ('l1', 'l2'), 'C' : [x / 10 for x in range(1,4)]}
-rf_hparams = { 'min_samples_leaf' : range(3,5,1), 'n_estimators': range(40,50,5), 'max_depth': range(7,9,1)}
-sv_hparams = { 'C' : [x / 10 for x in range(1,5,2)], 'kernel' : ['sigmoid', 'rbf'] }
-kn_hparams = { 'n_neighbors' : range(7,9)}
+lr_hparams = { 'alpha' : [2**x for x in range(0,10,1) ] }
+sv_hparams = { 'C' : [0.2, 0.4], 'kernel' : ['poly', 'rbf' ] }
+rf_hparams = { 'min_samples_leaf' : range(1,11,5), 'n_estimators': range(20,100,40), 'max_depth': range(5,25,10)}
+gb_hparams = { 'loss' : ['squared_error', 'absolute_error'], 'learning_rate' : [(0.1 * 10 ** x) for x in range(0, 4)]}
+nn_hparams = { 'max_epochs' : range(5,20,5), 'lr': [0.1, 0.2, 0.3], 'module__n_hidden1': range(10,100,15), 'module__n_hidden2': [5, 10] }
+
+# Our experiment register. This will grow and shrink as experiments are run and models and the 
+# preferred hyperparameters are identified. 
+#
+# NOTE estimators must be tagged w/ 'model' or 'grid' for GridSearch to enable recovery of 
+# optimal models for post-evaluation re-training 
+# TODO: introduce PCA here, regardless of whether it's running at a higher level to find optimal models  
+#Pipeline([('scaler', StandardScaler()), ('pca', PCA(n_components=12)), ('grid', GridSearchCV(?, ?, error_score=-1))]),
 experiments = [
-    # NOTE estimator must be tagged w/ 'model' for or 'grid' for GridSearch to enable predictions
-
-    # Control
-    #Pipeline([('model', DummyClassifier())]),
-
-    # Experimental models and hyperparameter tuning stuff -- these should all be gridsearch estimators, as
-    # we are delegating cross-validation to that object and relying on the ability to retrieve the optimal model 
-    #Pipeline([('scaler', StandardScaler()), ('poly', PolynomialFeatures()), ('grid', GridSearchCV(SVC(), sv_hparams, error_score=0))]),
-    #Pipeline([('scaler', StandardScaler()), ('pca', PCA(n_components=12)), ('grid', GridSearchCV(SVC(), sv_hparams, error_score=0))]),
-
-    #Pipeline([('scaler', StandardScaler()), ('poly', PolynomialFeatures()), ('grid', GridSearchCV(KNeighborsClassifier(), kn_hparams, error_score=0))]), 
-    
-    # Logistic Regression w/ L1/L2 norm penalties         
-    Pipeline([('grid', GridSearchCV(LogisticRegression(),lr_hparams, scoring='roc_auc', error_score=0))]),
-
-    # Random forest         
-    #Pipeline([('grid', GridSearchCV(RandomForestClassifier(),rf_hparams, scoring='roc_auc', error_score=0))]),
-    
-    # PCA + LR
-    Pipeline([('scaler', StandardScaler()), ('pca3', PCA(n_components=12)), ('model', SVC(kernel='rbf'))]),
-    # Pipeline([('scaler', StandardScaler()), ('pca3', PCA(n_components=5)), ('model', SVC(kernel='rbf'))]),
-    Pipeline([('scaler', StandardScaler()), ('pca3', PCA(n_components=12)), ('model', SVC(kernel='sigmoid'))]),
-    # Pipeline([('scaler', StandardScaler()), ('pca6', PCA(n_components=26)), ('model', LogisticRegression(penalty=None))]),
-    # Pipeline([('scaler', StandardScaler()), ('pca8', PCA(n_components=8)), ('model', LogisticRegression(penalty=None))]),
-
-    # Best performing models and hyperparameters reseulting from above search operations, we'll cross validate again 
-    # before submissiont to find the best based on the current features
-    Pipeline([('scaler', StandardScaler()), ('pca', PCA(n_components=7)), ('model', LogisticRegression(penalty=None))]),
-    Pipeline([('scaler', StandardScaler()), ('pca4', PCA(n_components=34)), ('model', LogisticRegression(penalty=None))]),
-    Pipeline([('model', RandomForestClassifier(max_depth=8, min_samples_leaf=4, n_estimators=45))]),
-    Pipeline([('scaler', StandardScaler()), ('model', KNeighborsClassifier(n_neighbors=8))]), 
-    # Pipeline([('model', VotingClassifier(
-    #     estimators=[
-    #         ('RF', RandomForestClassifier(max_depth=9, min_samples_leaf=4, n_estimators=40)), 
-    #         ('KNN', Pipeline([('scaler', StandardScaler()), ('model', KNeighborsClassifier(n_neighbors=8))])), 
-    #         ],
-    #     voting='soft'))]),
-    Pipeline([('model', VotingClassifier(
-        estimators=[
-            ('RF', RandomForestClassifier(max_depth=8, min_samples_leaf=4, n_estimators=70)), 
-            ('KNN', Pipeline([('scaler', StandardScaler()), ('model', KNeighborsClassifier(n_neighbors=8))])), 
-            ],
-        voting='soft'))]),
-    # This performs best on internal validation, but is a few tenths below the above voting classifier on the hidden 
-    # test data. Keep it here for potential mutation. 
-    # Pipeline([('model', VotingClassifier(
-    #     estimators=[
-    #         ('RF', RandomForestClassifier(max_depth=8, min_samples_leaf=4, n_estimators=45)), 
-    #         ('KNN', Pipeline([('scaler', StandardScaler()), ('model', KNeighborsClassifier(n_neighbors=8))])), 
-    #         ('LR', Pipeline([('scaler', StandardScaler()), ('pca4', PCA(n_components=34)), ('model', LogisticRegression(penalty=None))])),
-    #         ],
-    #     voting='soft'))]),
+    Pipeline([('model', DummyRegressor())]), # Control
+    Pipeline([('grid', GridSearchCV(LinearRegression(), {}, error_score=-1))]),
+    Pipeline([('grid', GridSearchCV(Ridge(), lr_hparams, error_score=-1))]), # best: alpha = 2
+    Pipeline([('grid', GridSearchCV(Lasso(), lr_hparams, error_score=-1))]), 
+    Pipeline([('poly', PolynomialFeatures()), ('grid', GridSearchCV(LinearRegression(), {}, error_score=-1))]), # ! bestest!
+    Pipeline([('scaler', StandardScaler()), ('grid', GridSearchCV(SVR(), sv_hparams, error_score=-1))]),
+    Pipeline([('scaler', StandardScaler()), ('poly', PolynomialFeatures()), ('grid', GridSearchCV(SVR(), sv_hparams, error_score=-1))]),
+    Pipeline([('grid', GridSearchCV(RandomForestRegressor(), rf_hparams, error_score=-1))]),
+    Pipeline([('grid', GridSearchCV(GradientBoostingRegressor(), gb_hparams, error_score=-1))]),
+    Pipeline([('model', NeuralNetRegressor(WARNet, max_epochs=10, lr=0.1, iterator_train__shuffle=True))]),
+    Pipeline([('model', GridSearchCV(NeuralNetRegressor(module=WARNet), nn_hparams, error_score=-1))]),
 ]
 
 def search(X_train, y_train, splits=3, visualize=False):  
     """
     Perform a hyperparameter and model search across all promising algorithms
-
-    NOTE: repurposed from kaggle comp
     """
     global experiments 
 
-    # Check algorithm outcomes on enriched account data
-    candidates = bakeoff(experiments, X_train, y_train, 0.85, False)
+    candidates = evaluate(experiments, X_train, y_train, 0.5, False)
 
-    # Find a winning experiment
-    winner, roc = validate(X_train, y_train, candidates, visualize, splits)
-    print(f"Best model identified: {get_model_from_experiment(winner)} (AUROC of {roc}).")
+    # Find a winning experiment - note there is some redundancy here given the test/train split 
+    # done implicitly in all of our parameter search efforts in the experiment 'manifest'. However, 
+    # as we discover leading candidates, we may pull them out of the grid search and memorialize them 
+    # to ensure they are perpetually considered. In these cases it's essential for the below validation 
+    # step, lest we accidentally nominate models above that hasn't undergone recent cross validation. 
+    winner, mse = validate(X_train, y_train, candidates, visualize, splits)
+    print(f"Best model identified: {get_model_from_experiment(winner)} (mse: {mse}).")
 
-    return winner, roc
+    return winner, mse
 
-def cluster_search(splits=3, visualize=False):  
+def monolithic_search(splits=3, visualize=False): 
+    """
+    Look for a single algorithm to maximize performance across all features
+    """
+    X_train, y_train, X_test, y_test = build_train_test_set(standard=True, statcast=False) 
+    winner, mae = search(X_train, y_train, splits=splits, visualize=visualize)
+    
+    # TODO: predict on the test set and check performance! below needs to be refactored 
+    return winner, mae
+
+def cluster_search(dimensions=2, splits=3, visualize=False):  
     """
     Perform a cluster-based hyperparameter and model search across all promising algorithms, 
     using the resulting ensemble to predict classes 
 
-    NOTE: repurposed from kaggle comp
+    NOTE: this is a refactored grid search pipeline used in the kaggle comp
     TODO: ensure this can reduce down to the monolithic search by requesting a single cluster
     """    
-    train_Xstd, train_Xsc, train_y, test_Xstd, test_Xsc, test_y = build_train_test_set() 
+    X_train, y_train, X_test, y_test = build_train_test_set(standard=True, statcast=False) 
     
     # Leverage the low-dimensional feature and associated label to isolate prominent sub-distributions 
     # and fit an experiment(pipeline) tailored to classify each
+    
+    # TODO complete dimensionality reduction and clustering 
+    if dimensions <= 1: 
+        raise ValueError()
+    
+    train_Xstd['cluster'] = [1] * len(train_Xstd)
+    
     cluster_winners = { }  
     for cluster in X_train['cluster'].unique(): 
         
@@ -349,15 +344,12 @@ def cluster_search(splits=3, visualize=False):
 
         # Where our clusters consist of uniform labels, short-circuit the search, the best strategy is 
         # to predict this label for any input
-        winner = None 
-        if len(y_train_clust.unique()) != 1: 
-            winner, roc = search(X_train_clust, y_train_clust, splits=splits, visualize=visualize)
-            print(f"Best model identified for cluster {cluster}: {get_model_from_experiment(winner)} (AUROC of {roc}).")
-        else:
-            winner = Pipeline([('model', DummyClassifier(strategy='most_frequent'))]).fit(X_train_clust, y_train_clust)
-            print(f"Bypassed model selection for cluster {cluster} due to uniform labels ({y_train_clust[0]}) falling back to {get_model_from_experiment(winner)}.")
+        winner, mse = search(X_train_clust, y_train_clust, splits=splits, visualize=visualize)
+        print(f"Best model identified for cluster {cluster}: {get_model_from_experiment(winner)} (MSE of {mse}).")
 
         cluster_winners[cluster] = winner
+
+    return cluster_winners 
 
 def main(**args): 
     """
@@ -365,20 +357,17 @@ def main(**args):
     """
     parser = argparse.ArgumentParser()
     
-    #group = parser.add_mutually_exclusive_group() 
-    #group.add_argument("-s", "--search", action=argparse.BooleanOptionalAction)
-    #group.add_argument("-c", "--clustersearch", action=argparse.BooleanOptionalAction)
-
+    parser.add_argument("-d", "--dimensions")
     parser.add_argument("-k", "--splits")
+    parser.add_argument("-c", "--conventional", action=argparse.BooleanOptionalAction)
+    parser.add_argument("-s", "--statcast", action=argparse.BooleanOptionalAction)
     parser.add_argument("-v", "--visualize", action=argparse.BooleanOptionalAction)
     
     parser.set_defaults(visualize=False)
     args = parser.parse_args()
     
-    cluster_search()
-    #cluster_search(int(args.splits))
-    
-    #parser.print_help()
+    monolithic_search()
+    #cluster_search(int(args.dimensions), args.conventional, args.statcast, int(args.splits), args.visualize)
 
 if __name__ == "__main__": 
     main()
