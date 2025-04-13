@@ -165,6 +165,7 @@ def build_train_test_set(standard=True, statcast=True):
     We can either assemble the sets from standard data, statcast or both (but not 
     neither :p )
     """
+
     if not standard and not statcast: 
         raise ValueError("One of standard or statcast must be True")
     
@@ -266,7 +267,8 @@ lr_hparams = { 'alpha' : [2**x for x in range(0,10,1) ] }
 sv_hparams = { 'C' : [0.2, 0.4], 'kernel' : ['poly', 'rbf' ] }
 rf_hparams = { 'min_samples_leaf' : range(1,11,5), 'n_estimators': range(20,100,40), 'max_depth': range(5,25,10)}
 gb_hparams = { 'loss' : ['squared_error', 'absolute_error'], 'learning_rate' : [(0.1 * 10 ** x) for x in range(0, 4)]}
-nn_hparams = { 'max_epochs' : range(5,20,5), 'lr': [0.1, 0.2, 0.3], 'module__n_hidden1': range(10,100,15), 'module__n_hidden2': [5, 10] }
+#TODO: YIKES ... skorch seemed like the ticket, but how do we prep our data and fire it into the NN if we use gridsearch/skorch? 
+nn_hparams = { 'max_epochs' : range(5,20,5), 'lr': [0.1, 0.2, 0.3], 'module__n_input': 1000, 'module__n_hidden1': range(10,100,15), 'module__n_hidden2': [5, 10] }
 
 # Our experiment register. This will grow and shrink as experiments are run and models and the 
 # preferred hyperparameters are identified. 
@@ -277,16 +279,16 @@ nn_hparams = { 'max_epochs' : range(5,20,5), 'lr': [0.1, 0.2, 0.3], 'module__n_h
 #Pipeline([('scaler', StandardScaler()), ('pca', PCA(n_components=12)), ('grid', GridSearchCV(?, ?, error_score=-1))]),
 experiments = [
     Pipeline([('model', DummyRegressor())]), # Control
-    Pipeline([('grid', GridSearchCV(LinearRegression(), {}, error_score=-1))]),
-    Pipeline([('grid', GridSearchCV(Ridge(), lr_hparams, error_score=-1))]), # best: alpha = 2
-    Pipeline([('grid', GridSearchCV(Lasso(), lr_hparams, error_score=-1))]), 
-    Pipeline([('poly', PolynomialFeatures()), ('grid', GridSearchCV(LinearRegression(), {}, error_score=-1))]), # ! bestest!
-    Pipeline([('scaler', StandardScaler()), ('grid', GridSearchCV(SVR(), sv_hparams, error_score=-1))]),
-    Pipeline([('scaler', StandardScaler()), ('poly', PolynomialFeatures()), ('grid', GridSearchCV(SVR(), sv_hparams, error_score=-1))]),
-    Pipeline([('grid', GridSearchCV(RandomForestRegressor(), rf_hparams, error_score=-1))]),
-    Pipeline([('grid', GridSearchCV(GradientBoostingRegressor(), gb_hparams, error_score=-1))]),
+    Pipeline([('grid', GridSearchCV(LinearRegression(), {}, n_jobs=-1, error_score=-1))]),
+    Pipeline([('grid', GridSearchCV(Ridge(), lr_hparams, n_jobs=-1, error_score=-1))]), # best: alpha = 2
+    Pipeline([('grid', GridSearchCV(Lasso(), lr_hparams, n_jobs=-1, error_score=-1))]), 
+    Pipeline([('poly', PolynomialFeatures()), ('grid', GridSearchCV(LinearRegression(), {}, n_jobs=-1, error_score=-1))]), # ! bestest!
+    Pipeline([('scaler', StandardScaler()), ('grid', GridSearchCV(SVR(), sv_hparams, n_jobs=-1, error_score=-1))]),
+    Pipeline([('scaler', StandardScaler()), ('poly', PolynomialFeatures()), ('grid', GridSearchCV(SVR(), sv_hparams, n_jobs=-1, error_score=-1))]),
+    Pipeline([('grid', GridSearchCV(RandomForestRegressor(), rf_hparams, n_jobs=-1,error_score=-1))]),
+    Pipeline([('grid', GridSearchCV(GradientBoostingRegressor(), gb_hparams, n_jobs=-1,error_score=-1))]),
     Pipeline([('model', NeuralNetRegressor(WARNet, max_epochs=10, lr=0.1, iterator_train__shuffle=True))]),
-    Pipeline([('model', GridSearchCV(NeuralNetRegressor(module=WARNet), nn_hparams, error_score=-1))]),
+    Pipeline([('model', GridSearchCV(NeuralNetRegressor(module=WARNet), nn_hparams, n_jobs=-1,error_score=-1))]),
 ]
 
 def search(X_train, y_train, splits=3, visualize=False):  
