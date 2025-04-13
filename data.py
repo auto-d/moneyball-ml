@@ -1039,18 +1039,33 @@ def load_sc_pitching(year, dir):
     df_pitcher.set_index('pitcher', inplace=True)
 
     velo_df = load_sc_pitching_velo(year, dir)
-    spin_df = load_sc_pitching_spin(year, dir) 
+    spin_df = load_sc_pitching_spin(year, dir)     
     mvmt_df = load_sc_pitching_mvmt(year, dir)
 
     velo_df.set_index('player_id', inplace=True) 
+    spin_df['player_id'] = spin_df['player_id'].astype('int32')
     spin_df.set_index('player_id', inplace=True) 
+    mvmt_df.drop([
+        'pitch_type_CU', 
+        'pitch_type_FC', 
+        'pitch_type_KN', 
+        'pitch_type_SC', 
+        'pitch_type_FS', 
+        'pitch_type_SV', 
+        'pitch_type_CH', 
+        'pitch_type_ST', 
+        'pitch_type_SL', 
+        'pitch_type_SI', 
+        'pitch_type_FO', 
+        'pitch_type_FF'
+        ], 
+        axis=1, 
+        inplace=True)
     mvmt_df.set_index('pitcher_id', inplace=True) 
 
-    df = df_pitcher.join(velo_df, how='outer', rsuffix='_drop')
-    df = df.join(spin_df, how='outer', rsuffix='_drop')
-    df = df.join(mvmt_df,  how='outer', rsuffix='_drop')
-
-    df.drop(['player_id_drop'], axis=1, inplace=True)
+    df = df_pitcher.join(velo_df, how='inner', rsuffix='_drop')
+    df = df.join(spin_df, how='inner', rsuffix='_drop')
+    #df = df.join(mvmt_df,  how='inner', rsuffix='_drop')
 
     return df
 
@@ -1267,7 +1282,6 @@ def load_sc_fielding(year, dir):
     df = cp_df.join(jump_df, how='outer', rsuffix="_drop")
     df = df.join(throwing_df, how='outer', rsuffix="_drop")
     df = df.join(framing_df, how='outer', rsuffix="_drop")
-    df.drop(['player_id_drop'], axis=1, inplace=True)
 
     # Fill in holes created by above joins
     df.fillna(0, inplace=True)
@@ -1306,6 +1320,8 @@ def load_sc_running(year, dir):
         
         cdf.to_parquet(file)
 
+    cdf.set_index('player_id', inplace=True)
+
     return cdf
 
 def load_standard(year, dir='data/'):
@@ -1316,14 +1332,14 @@ def load_standard(year, dir='data/'):
     std_batting = load_std_batting(year, dir) 
     std_pitching = load_std_pitching(year, dir)
 
+    std_batting['player_id'] = std_batting['IDfg'].apply(lambda x: idfg_to_mlb(x))
+    std_pitching['player_id'] = std_pitching['IDfg'].apply(lambda x: idfg_to_mlb(x))
+
     std_batting.set_index('IDfg', inplace=True)
     std_pitching.set_index('IDfg', inplace=True)
 
     df = std_batting.join(std_pitching, how='outer', rsuffix="_drop")
-    df['player_id'] = df['IDfg'].apply(lambda x: idfg_to_mlb(x))
     df.set_index('player_id', inplace=True)
-
-    df.drop(['IDfg_drop', 'IDfg'], axis=1)
 
     df.fillna(0, inplace=True)
 
@@ -1339,22 +1355,12 @@ def load_statcast(year, dir='data/'):
     sc_fielding = load_sc_fielding(year, dir)
     sc_running = load_sc_running(year, dir)
 
-    sc_pitch.set_index('pitcher', inplace=True)
-    sc_batting.set_index('batter', inplace=True)
-    sc_fielding.set_index('player_id', inplace=True)
-    sc_running.set_index('player_id', inplace=True)
-
     df = sc_pitch.join(sc_batting, how='outer', rsuffix='_drop')
     df = df.join(sc_fielding, how='outer', rsuffix='_drop')
     df = df.join(sc_running, how='outer', rsuffix='_drop')    
-    df.drop(['pitcher', 'batter', 'player_id_drop'], axis=1, inplace=True)    
 
     # Fill join holes... 
     df.fillna(0, inplace=True)
-
-    df['player_id'] = df['player_id'].astype('int32')
-
-    df.set_index('player_id', inplace=True)
 
     return df
     
