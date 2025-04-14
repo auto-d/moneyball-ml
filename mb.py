@@ -254,7 +254,7 @@ def evaluate(experiments, X_train, y_train, threshold=0.2, visualize=False):
 
         mse = metrics.mean_squared_error(y_train, preds)
 
-        print(f"==== \nExperiment {i}: {mse}\n")
+        print(f"==== \nExperiment {experiment}/{i}: {mse}\n")
 
         if mse < threshold: 
             winners.append(experiment)
@@ -330,11 +330,14 @@ def get_estimator_from_experiment(experiment):
     """
     keys = experiment.named_steps.keys()
 
-    if 'model' in keys or 'nn' in keys:
+    if 'model' in keys:
         model = experiment.named_steps['model']
-    elif 'grid' in keys or 'gridnn' in keys: 
-        # Note this requires refit param to grid search to be set True
+    elif 'nn' in keys:
+        model = experiment.named_steps['nn']        
+    elif 'grid' in keys: 
         model = experiment.named_steps['grid'].best_estimator_
+    elif 'gridnn' in keys: 
+        model = experiment.named_steps['gridnn'].best_estimator_
     else: 
         raise ValueError("Cannot extract estimator from pipeline!")
 
@@ -381,10 +384,14 @@ def generate_experiments(nn_input_size=None):
     # Pipeline([('scaler', StandardScaler()), ('pca', PCA(n_components=12)), ('grid', GridSearchCV(?, ?, error_score=-1))]),
 
     experiments = [
-        #Pipeline([('model', DummyRegressor())]), # Control
-        Pipeline([('nn', NeuralNetRegressor(module=WARNet, criterion=MSELoss, optimizer=SGD, max_epochs=100, lr=0.0001, module__n_input=nn_input_size, module__n_hidden1=100, batch_size=1, iterator_train__shuffle=True))]),
-        #Pipeline([('grid', GridSearchCV(Ridge(), lr_hparams, n_jobs=-1, error_score=-1))]), 
-        #Pipeline([('poly', PolynomialFeatures()), ('model', LinearRegression())]),
+        Pipeline([('model', DummyRegressor())]), # Control
+
+        # Best performers on CV'd trainset as identified by GridSearch 
+        Pipeline([('nn', NeuralNetRegressor(module=WARNet, criterion=MSELoss, optimizer=SGD, max_epochs=1000, lr=0.001, module__n_input=nn_input_size, module__n_hidden1=75, batch_size=1, iterator_train__shuffle=True))]),
+        Pipeline([('grid', GridSearchCV(Ridge(), lr_hparams, n_jobs=-1, error_score=-1))]), 
+        Pipeline([('poly', PolynomialFeatures()), ('model', LinearRegression())]),
+
+        # Prior successful / performant pipelines for mutation...        
         #Pipeline([('pca', PCA(n_components=5)), ('model', LinearRegression())]),
         #Pipeline([('grid', GridSearchCV(LinearRegression(), {}, n_jobs=-1, refit=True, error_score=-1))]),
         #Pipeline([('grid', GridSearchCV(Lasso(), lr_hparams, n_jobs=-1, refit=True, error_score=-1))]), 
@@ -392,18 +399,17 @@ def generate_experiments(nn_input_size=None):
         #Pipeline([('scaler', StandardScaler()), ('poly', PolynomialFeatures()), ('grid', GridSearchCV(SVR(), sv_hparams, refit=True, n_jobs=-1, error_score=-1))]),
         #Pipeline([('grid', GridSearchCV(RandomForestRegressor(), rf_hparams, refit=True, n_jobs=-1,error_score=-1))]),
         #Pipeline([('grid', GridSearchCV(GradientBoostingRegressor(), gb_hparams, refit=True, n_jobs=-1,error_score=-1))]),
-        
+        #Pipeline([('nn', NeuralNetRegressor(module=WARNet, criterion=MSELoss, optimizer=SGD, max_epochs=100, lr=0.0001, module__n_input=nn_input_size, module__n_hidden1=100, batch_size=1, iterator_train__shuffle=True))]),
         #Pipeline([('nn', NeuralNetRegressor(module=WARNet, criterion=MSELoss, optimizer=SGD, max_epochs=30, lr=0.5, module__n_input=nn_input_size, module__n_hidden1=10, batch_size=1, iterator_train__shuffle=True))]),
         #Pipeline(['nn', NeuralNetRegressor(module=WARNet, criterion=MSELoss, optimizer=SGD, max_epochs=15, lr=0.1, module__n_input=nn_input_size, module__n_hidden1=10, iterator_train__shuffle=True))]),
-        Pipeline([('gridnn', 
-                   GridSearchCV(
-                       NeuralNetRegressor(module=WARNet), 
-                       nn_hparams, 
-                       refit=True, 
-                       #n_jobs=-1,
-                       error_score=-1)
-            )]),
-        # TODO: addPCA transform before NN estimator here to
+        # Pipeline([('gridnn', 
+        #            GridSearchCV(
+        #                NeuralNetRegressor(module=WARNet), 
+        #                nn_hparams, 
+        #                refit=True, 
+        #                #n_jobs=-1,
+        #                error_score=-1)
+        #     )]),
     ]
 
     return experiments
@@ -434,7 +440,7 @@ def monolithic_search(conventional=True, statcast=True, splits=3, visualize=Fals
     """
     Look for a single algorithm to maximize performance across all features
     """
-    X_train, y_train, X_test, y_test = build_train_test_set(True, True) 
+    X_train, y_train, X_test, y_test = build_train_test_set(conventional, statcast) 
     winner, mse = search(X_train, y_train, splits=splits, visualize=visualize)
 
     print(f"Winner identified: {winner} @ {mse}")
@@ -458,7 +464,7 @@ def main(**args):
     parser.set_defaults(visualize=False)
     args = parser.parse_args()
     
-    monolithic_search(args.conventional, args.statcast, splits=args.splits, visualize=args.visualize)
+    monolithic_search(args.conventional, args.statcast, visualize=args.visualize)
 
 if __name__ == "__main__": 
     main()
