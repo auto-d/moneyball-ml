@@ -224,6 +224,7 @@ def evaluate(experiments, X_train, y_train, threshold=0.2, visualize=False):
 
     X_train_nn = scale(X_train).to_numpy().astype(np.float32)
     y_train_nn = y_train.to_numpy().astype(np.float32)
+    y_train_nn = np.expand_dims(y_train_nn, axis=1)
 
     for i, experiment in enumerate(experiments):         
 
@@ -255,7 +256,7 @@ def evaluate(experiments, X_train, y_train, threshold=0.2, visualize=False):
 
     return winners
 
-def validate(X_train, y_train, X_test, y_test,candidates, visualize=False, splits=5): 
+def validate(X_train, y_train, candidates, visualize=False, splits=5): 
     """
     Validate the candidate experiments (sklearn pipelines) with cross validation
     and return a winner. 
@@ -368,6 +369,7 @@ def generate_experiments(nn_input_size=None):
 
     experiments = [
         #Pipeline([('model', DummyRegressor())]), # Control
+        Pipeline([('nn', NeuralNetRegressor(module=WARNet, criterion=MSELoss, optimizer=SGD, max_epochs=100, lr=0.0001, module__n_input=nn_input_size, module__n_hidden1=100, batch_size=1, iterator_train__shuffle=True))]),
         #Pipeline([('grid', GridSearchCV(Ridge(), lr_hparams, n_jobs=-1, error_score=-1))]), 
         #Pipeline([('poly', PolynomialFeatures()), ('model', LinearRegression())]),
         #Pipeline([('pca', PCA(n_components=5)), ('model', LinearRegression())]),
@@ -377,7 +379,7 @@ def generate_experiments(nn_input_size=None):
         #Pipeline([('scaler', StandardScaler()), ('poly', PolynomialFeatures()), ('grid', GridSearchCV(SVR(), sv_hparams, refit=True, n_jobs=-1, error_score=-1))]),
         #Pipeline([('grid', GridSearchCV(RandomForestRegressor(), rf_hparams, refit=True, n_jobs=-1,error_score=-1))]),
         #Pipeline([('grid', GridSearchCV(GradientBoostingRegressor(), gb_hparams, refit=True, n_jobs=-1,error_score=-1))]),
-        #Pipeline([('nn', NeuralNetRegressor(module=WARNet, criterion=MSELoss, optimizer=SGD, max_epochs=30, lr=0.5, module__n_input=nn_input_size, module__n_hidden1=10, batch_size=1, iterator_train__shuffle=True))]),
+        
         #Pipeline([('nn', NeuralNetRegressor(module=WARNet, criterion=MSELoss, optimizer=SGD, max_epochs=30, lr=0.5, module__n_input=nn_input_size, module__n_hidden1=10, batch_size=1, iterator_train__shuffle=True))]),
         #Pipeline(['nn', NeuralNetRegressor(module=WARNet, criterion=MSELoss, optimizer=SGD, max_epochs=15, lr=0.1, module__n_input=nn_input_size, module__n_hidden1=10, iterator_train__shuffle=True))]),
         Pipeline([('gridnn', 
