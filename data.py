@@ -189,20 +189,19 @@ def canonicalize_data(df, drop_pct=0.01, drop=[], onehot=[], ordinal=[], boolean
 
     return dfc
 
-
-def load_std_pitching(year, dir='data/'): 
+def load_std_pitching(year, dir_='data/'): 
     """
     Load conventional pitching statistics 
     See https://library.fangraphs.com/pitching/complete-list-pitching/
     """    
-    file = dir + f"std_pitching_{year}.parquet"
+    file = dir_ + f"std_pitching_{year}.parquet"
     cdf = None
     try: 
         cdf = pd.read_parquet(file) 
 
     except FileNotFoundError: 
             
-        df = pb.pitching_stats(year)
+        df = pb.pitching_stats(year, qual=10)
 
         drop_columns = [
             'Season',
@@ -542,11 +541,11 @@ def load_std_pitching(year, dir='data/'):
 
     return cdf
 
-def load_std_batting(year, dir='data/'): 
+def load_std_batting(year, dir_='data/'): 
     """
     Load conventional batting statistics 
     """
-    file = dir + f"std_batting_{year}.parquet"
+    file = dir_ + f"std_batting_{year}.parquet"
     cdf = None
     try: 
         cdf = pd.read_parquet(file) 
@@ -820,12 +819,12 @@ def load_std_batting(year, dir='data/'):
 
     return cdf
 
-def load_sc_base(year, dir): 
+def load_sc_base(year, dir_): 
     """
     Load and clean pitching/hitting data, pulling from the Internet if we haven't already processed 
     and saved the cleaned data. 
     """
-    file = dir + f"sc_{year}.parquet"
+    file = dir_ + f"sc_{year}.parquet"
     cdf = None
     try: 
         cdf = pd.read_parquet(file) 
@@ -882,11 +881,11 @@ def load_sc_base(year, dir):
 
     return cdf
 
-def load_sc_pitching_velo(year, dir): 
+def load_sc_pitching_velo(year, dir_): 
     """
     Load and clean pitching batted ball data
     """
-    file = dir + f"sc_pitching_velo_{year}.parquet"
+    file = dir_ + f"sc_pitching_velo_{year}.parquet"
     df = None
     try: 
         cdf = pd.read_parquet(file) 
@@ -908,12 +907,12 @@ def load_sc_pitching_velo(year, dir):
 
     return cdf
 
-def load_sc_pitching_spin(year, dir): 
+def load_sc_pitching_spin(year, dir_): 
     """
     Load and clean pitching spin data
     """
     # Manual pull from baseball savant
-    file = dir + f"active_spin_{year}.csv"
+    file = dir_ + f"active_spin_{year}.csv"
     df = None
     try: 
         df = pd.read_csv(file) 
@@ -938,12 +937,12 @@ def load_sc_pitching_spin(year, dir):
 
     return cdf
 
-def load_sc_pitching_mvmt(year, dir): 
+def load_sc_pitching_mvmt(year, dir_): 
     """
     Load and clean pitching movement data
     """
     # Manual pull from baseball savant
-    file = dir + f"pitch_movement_{year}.csv"
+    file = dir_ + f"pitch_movement_{year}.csv"
     df = None
     try: 
         df = pd.read_csv(file)
@@ -973,11 +972,11 @@ def load_sc_pitching_mvmt(year, dir):
 
     return cdf
 
-def load_sc_pitching(year, dir): 
+def load_sc_pitching(year, dir_): 
     """
     Load and clean statcast pitching data
     """
-    sc_df = load_sc_base(year, dir)    
+    sc_df = load_sc_base(year, dir_)    
 
     df_pitcher = sc_df.groupby('pitcher').agg({
         'pitch_type_CH' : ['sum'], 
@@ -1047,8 +1046,8 @@ def load_sc_pitching(year, dir):
     df_pitcher.reset_index(inplace=True)
     df_pitcher.set_index('pitcher', inplace=True)
 
-    velo_df = load_sc_pitching_velo(year, dir)
-    spin_df = load_sc_pitching_spin(year, dir)     
+    velo_df = load_sc_pitching_velo(year, dir_)
+    spin_df = load_sc_pitching_spin(year, dir_)     
     
     velo_df.set_index('player_id', inplace=True) 
     spin_df['player_id'] = spin_df['player_id'].astype('int32')
@@ -1059,11 +1058,11 @@ def load_sc_pitching(year, dir):
 
     return df
 
-def load_sc_batting(year, dir): 
+def load_sc_batting(year, dir_): 
     """
     Load and clean batting data
     """
-    sc_df = load_sc_base(year, dir)
+    sc_df = load_sc_base(year, dir_)
 
     df_batter = sc_df.groupby('batter').agg({
         'pitch_type_CH' : ['sum'], 
@@ -1134,14 +1133,14 @@ def load_sc_batting(year, dir):
 
     return df_batter
 
-def load_sc_fielding_cp(year, dir): 
+def load_sc_fielding_cp(year, dir_): 
     """
     Load and clean catch probability fielding data
     """
 
     # We have outs above average, but that is a post-hoc analysis, so leave out (leakage
     # of target label as it requires relative ranking among league)
-    file = dir + f"sc_catch_prob_{year}.parquet"
+    file = dir_ + f"sc_catch_prob_{year}.parquet"
     cdf = None
     try: 
         cdf = pd.read_parquet(file) 
@@ -1164,12 +1163,12 @@ def load_sc_fielding_cp(year, dir):
 
     return cdf
 
-def load_sc_fielding_jump(year, dir): 
+def load_sc_fielding_jump(year, dir_): 
     """
     Load and outfielder jump data
     """
 
-    file = dir + f"sc_jump_{year}.parquet"
+    file = dir_ + f"sc_jump_{year}.parquet"
     cdf = None
     try: 
         cdf = pd.read_parquet(file) 
@@ -1195,13 +1194,13 @@ def load_sc_fielding_jump(year, dir):
 
     return cdf
 
-def load_sc_catcher_throwing(year, dir): 
+def load_sc_catcher_throwing(year, dir_): 
     """
     Load and clean catcher throw data, note this includes
     pop time metrics - no need for separate poptime df 
     """
 
-    file = dir + f"catcher_throwing_{year}.csv"
+    file = dir_ + f"catcher_throwing_{year}.csv"
 
     cdf = None
     try: 
@@ -1224,12 +1223,12 @@ def load_sc_catcher_throwing(year, dir):
 
     return cdf
 
-def load_sc_catcher_framing(year, dir): 
+def load_sc_catcher_framing(year, dir_): 
     """
     Load and clean catcher data
     """
 
-    file = dir + f"sc_framing_{year}.parquet"
+    file = dir_ + f"sc_framing_{year}.parquet"
     cdf = None
     try: 
         cdf = pd.read_parquet(file) 
@@ -1255,15 +1254,15 @@ def load_sc_catcher_framing(year, dir):
 
     return cdf
 
-def load_sc_fielding(year, dir): 
+def load_sc_fielding(year, dir_): 
     """
     Load all relevant statcast fielding data 
     """
 
-    cp_df = load_sc_fielding_cp(year, dir)
-    jump_df = load_sc_fielding_jump(year, dir)
-    throwing_df = load_sc_catcher_throwing(year, dir)
-    framing_df = load_sc_catcher_framing(year, dir)
+    cp_df = load_sc_fielding_cp(year, dir_)
+    jump_df = load_sc_fielding_jump(year, dir_)
+    throwing_df = load_sc_catcher_throwing(year, dir_)
+    framing_df = load_sc_catcher_framing(year, dir_)
 
     cp_df.set_index('player_id', inplace=True)
     jump_df.set_index('player_id', inplace=True)
@@ -1279,12 +1278,12 @@ def load_sc_fielding(year, dir):
 
     return df
 
-def load_sc_running(year, dir): 
+def load_sc_running(year, dir_): 
     """
     Load and clean baserunning data
     """
     
-    file = dir + f"sc_running_{year}.parquet"
+    file = dir_ + f"sc_running_{year}.parquet"
     cdf = None
     try: 
         cdf = pd.read_parquet(file) 
@@ -1315,13 +1314,13 @@ def load_sc_running(year, dir):
 
     return cdf
 
-def load_standard(year, dir='data/'):
+def load_standard(year, dir_='data/'):
     """
     Retrieve the conventional/non-statcast metrics for a given year
     """
     
-    std_batting = load_std_batting(year, dir) 
-    std_pitching = load_std_pitching(year, dir)
+    std_batting = load_std_batting(year, dir_) 
+    std_pitching = load_std_pitching(year, dir_)
 
     std_batting['player_id'] = std_batting['IDfg'].apply(lambda x: idfg_to_mlb(x))
     std_pitching['player_id'] = std_pitching['IDfg'].apply(lambda x: idfg_to_mlb(x))
@@ -1329,7 +1328,12 @@ def load_standard(year, dir='data/'):
     std_batting.set_index('IDfg', inplace=True)
     std_pitching.set_index('IDfg', inplace=True)
 
-    df = std_batting.join(std_pitching, how='outer', rsuffix="_drop")
+    df = std_batting.join(std_pitching, how='outer', lsuffix="_h",rsuffix="_p")
+    df.rename(columns={
+        "player_id_h": "player_id", 
+        "WAR_h" : "WAR"
+        }, inplace=True)
+    df.drop(["WAR_p"], axis=1, inplace=True)
     df = df[~df.player_id.isna()]
     df.set_index('player_id', inplace=True)
 
@@ -1338,15 +1342,15 @@ def load_standard(year, dir='data/'):
     find_na(df)
     return df
 
-def load_statcast(year, dir='data/'): 
+def load_statcast(year, dir_='data/'): 
     """
     Load the sc data
     """
 
-    sc_pitch = load_sc_pitching(year, dir)
-    sc_batting = load_sc_batting(year, dir)
-    sc_fielding = load_sc_fielding(year, dir)
-    sc_running = load_sc_running(year, dir)
+    sc_pitch = load_sc_pitching(year, dir_)
+    sc_batting = load_sc_batting(year, dir_)
+    sc_fielding = load_sc_fielding(year, dir_)
+    sc_running = load_sc_running(year, dir_)
 
     df = sc_pitch.join(sc_batting, how='outer', rsuffix='_drop')
     df = df.join(sc_fielding, how='outer', rsuffix='_drop')

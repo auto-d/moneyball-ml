@@ -6,22 +6,30 @@ from skorch import NeuralNetRegressor
 
 class WARNet(nn.Module): 
 
-    def __init__(self, n_input, n_hidden1, n_hidden2=0): 
+    def __init__(self, n_input, n_hidden1=1, n_hidden2=0, n_hidden3=0, act=True):
         """
         Constructor for our WAR regression network 
+
+        I'm clueless about network geometry, allow variation of depth and height as
+        well as whether to apply relu activation between the hidden layers. 
         """
         super().__init__()
 
-        # TODO: calculate the input size and test this
-        self.input_size = n_input
-        self.output_size = 1
-        self.hidden1 = nn.Linear(self.input_size, n_hidden1)
-
+        self.act = act 
+        self.linear1 = nn.Linear(n_input, n_hidden1)
+        
         if n_hidden2: 
-            self.hidden2 = nn.Linear(n_hidden1, n_hidden2)
-            self.out = nn.Linear(n_hidden2, 1)
+            self.linear2 = nn.Linear(n_hidden1, n_hidden2)
+
+            if n_hidden3: 
+                self.linear2 = nn.Linear(n_hidden2, n_hidden3)
+                self.out = nn.Linear(n_hidden3, 1)
+            else: 
+                self.linear3 = None
+                self.out = nn.Linear(n_hidden2, 1)    
         else: 
-            self.hidden2 = None
+            self.linear2 = None
+            self.linear3 = None
             self.out = nn.Linear(n_hidden1, 1)
 
     def forward(self, x): 
@@ -36,16 +44,21 @@ class WARNet(nn.Module):
         from `predict` by skorch. i.e. this *is* our predict function in the sklearn
         pipeline and the return value must abide conversion to an np array. 
         """
-        x = self.hidden1(x) 
-        x = F.relu(x)
+        x = self.linear1(x) 
+
+        x = F.relu(x) if self.act else x
         
-        if self.hidden2 is not None: 
-            x = self.hidden2(x)
-            x = F.relu(x) 
-        
+        if self.linear2: 
+            x = self.linear2(x) 
+            x = F.relu(x) if self.act else x
+
+            if self.linear3: 
+                x = self.linear3(x) 
+                x = F.relu(x) if self.act else x
+
         x = self.out(x) 
         
-        return x.flatten()
+        return x
     
 class MBDataset(Dataset): 
     """
@@ -54,7 +67,7 @@ class MBDataset(Dataset):
     """
     def __init__(self, feature_df, labels): 
         """
-        Initialize our custome pytorch dataset
+        Initialize our custom pytorch dataset object
         """
         
         self.X = feature_df
@@ -82,9 +95,9 @@ class MBDataset(Dataset):
     
 def get_data_loader(feature_df, labels, batch_size=5): 
     """
-    Retrieve a pytorch-style dataloader ... unclear if we need this with skorch. 
+    Retrieve a pytorch-style dataloader ... not actually necessary with skorch 
     """
     data = MBDataset(feature_df, labels)
     loader = DataLoader(data, batch_size=batch_size, shuffle=True)
     
-    return loader
+    return loader 
