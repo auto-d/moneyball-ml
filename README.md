@@ -1,97 +1,19 @@
 # moneyball-ml
-MLB statcast data vs conventional baseball metrics in win prediction
 
-# TODO : 
+Major League Baseball (MLB) has made a shift toward data-driven decision-making in the past 20 years. Initially driven by more traditional statistics that could be compiled by a human scorekeeper, the trend in recent years has been to embrace machine-captured StatCast data to evaluate players. However, many of the statistics cited by baseball enthusiasts and commentators remain those which can be derived from the traditional statistics, and not their richer StatCast counterparts. For example weighted overall batting average aka wOBA, a common metric for hitting performance, is an amalgamation of at-bats, singles, doubles, walks, etc as indicated by the below definition:
 
-[ ] implemeent the MBDataset class so it returns the data in the right format 
-[ ] pass the dataset output in the `evaluate` method when we're operating on an 'nn' pipeline
-[ ] get some damned results for the NN 
-[ ] generate visualizations of cluster, algorithm progress, etc... to add to presentation!! 
-[ ] complete dataflow /pipeline diagram and incorporate!
+wOBA flash 
+      Graphic source: FanGraphs, wOBA definition, see https://library.fangraphs.com/offense/woba/
 
-From Week 12 lecture notes: 
-```
-[ ] 10-minute max video presentation that addresses
-    [ ] Data and data prep pipeline
-    [ ] Feature engineering and selection
-    [ ] Choice of evaluation metric / justification
-    [ ] Evaluation strategy
-    [ ] Model optimization
-    [ ] Must describe both DL and non-DL models
-    [ ] Comment on model performance
-        [ ] Expected / unexpected
-        [ ] What could be done to improve it
+Furthermore, StatCast data is typically used to assess a player's potential, independent or in conjunction with conventional metrics. As extensive information on historical MLB seasons and its players have been compiled, it is possible to analyze StatCast data for its predictive value in the context of other important outcomes such as win rate and run differential. Notably its predictive value here can be compared against the now conventional statistics that rely on the non-Statcast-sourced data. I propose to analyze and model the relationship to predict game outcomes with inputs that are: 
+- Strictly sourced from conventional, non-Statcast reporting methods
+- Strictly sourced from Statcast
+- A combination of A and B above
 
-[ ] Project code repo
-```
+In so doing, I hope to shed light on the relative value of the newer, more expensive, and often-touted metric source. The data that underpins the proposed analysis is available on the MLB website, a partial list of relevant datasets is provided here: 
+- Pitch tempo: https://baseballsavant.mlb.com/leaderboard/pitch-tempo
+- Pitch movement: https://baseballsavant.mlb.com/leaderboard/pitch-movement
+- Bat tracking : https://baseballsavant.mlb.com/leaderboard/bat-tracking
+- Batted ball profile: https://baseballsavant.mlb.com/leaderboard/batted-ball
 
-Notes: 
-- how does a player's performance in one season predict their performance the next season?
-    - offer up a simplified version: 2023 / 2024
-        - try to predict WAR for 2024 
-            - three models: 
-                - statistics from 2023 (to predict 2024 WAR)
-                - model statistics 
-                - statcast + statistics 
-                - injuries accounted for -- plate appearances, etc.... or pitchers 
-                    - only include the union of the players 
-                - clean regression problem
-- less about results and more about approach
-
-
-**Goal**: Model the role of Major League Baseball (MLB) Statcast data in predicting player value. 
-
-**Evaluation Criteria**: 
-
-**Metric Selection**: 
-
-The objective is to predict the WAR value for players within some reasonable margin. A few tenths off one way or another is probably a great prediction, but being off by an integer or two is problematic. We settle on **mean squared error** as a metric to disproportionately penalize models that produce a higher variance in their predictions. 
-
-## Evaluation strategy 
-
-Linear Regression, with L1 and L2 penalties 
-Support Vector Regressor
-Random Forest Regressor 
-Hyperparameter grid search across wide range of SKLearn regressors and neural networks. 
-
-Cross validation w
-
-
-
-## Approach
-
-The approach to the prediction task is outlined below.
-
-1. 
-2
-
-retrospective: 
-bin players by position, then create different models, or at least parameters to predict? 
-
-## Exploratory Data Analysis
-
-
-
-## Data Preparation 
-
-The 
-
-- outliers, missing data, corrupted data, hetergeneity of reporting, data types, 
-- importance of homogenization, intersecting and joining to ensure 
-- sparsity due to one-hot encodings.. 
-- note challenges with feature count
-    - sparsity of one-hot encoding for categoricals
-    - presence of nans
-
-- discard conventional metrics that betray outcomes such as win rate, clutch performances, etc...
-
-
-## Feature Engineering 
-
-
-## Data Pipeline
-
-
-## Algorithm and Hyperparameter Search
-
-
+While the structured nature of these datasets supports classical machine learning (ML) methods, the volume and complexity also provide an interesting testbed for neural-network-based ML algorithms.

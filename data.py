@@ -178,7 +178,6 @@ def canonicalize_data(df, drop_pct=0.01, drop=[], onehot=[], ordinal=[], boolean
                     if nans: 
                         print_(" - ❗️ WARNING nans converted to 0 for all new features")
                 elif column in ordinal: 
-                    # TODO: nans? 
                     dfc[column] = ordinal_feature(df, column)
                     print_(f" - ordinal encoding!")                
                 else: 
@@ -1242,7 +1241,6 @@ def load_sc_catcher_framing(year, dir_):
             'year'
             ]
 
-        #TODO: work through columns that need to be normalized and populate above lists
         cdf = canonicalize_data(
             df, 
             drop_pct=0.01, 
@@ -1301,7 +1299,6 @@ def load_sc_running(year, dir_):
             'position'
         ]
 
-        #TODO: work through columns that need to be normalized and populate above lists
         cdf = canonicalize_data(
             df, 
             drop_pct=0.01, 

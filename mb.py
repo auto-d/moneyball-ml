@@ -63,8 +63,6 @@ def scale(df, range=(0,1), omit=[]):
 
     return df
 
-# TODO: these have all been rewritten, test
-
 def pca(df, components=2): 
     """
     Compress the provided dataframe into n dimensions, returning the new dims 
@@ -110,15 +108,15 @@ def dbscan(df, eps=0.5, min_samples=10):
 
     return df_cluster
 
-# TODO: rewrite with the new methods above
 def project_results_2d(X_train, y_train, probs, threshold=0.5, clusters=8): 
     """
     Use PCA to prepare a flattened version of the training data and our performance on the TRAINING data predictions
 
     NOTE: utilty function written for the Kaggle comp
     """
-    X_train_2d, cluster_centers = apply_pca2(X_train, clusters)
-    
+    # TODO: rewrite before visualizing 2d based on NN, et c 
+    #X_train_2d, cluster_centers = apply_pca2(X_train, clusters)
+
     # Create a subset just for training data, and then subsets for the classes
     viz_df = X_train_2d.join(y_train, how='inner', rsuffix='_y') 
 
@@ -193,7 +191,6 @@ def build_train_test_set(standard=True, statcast=True):
         X_train = sc23
         X_test = sc24
     else: 
-        # TODO: test joins 
         X_train = std23.drop(['WAR'], axis=1)
         X_train = X_train.join(sc23, how="left")
         X_test = std24.drop(['WAR'], axis=1)
@@ -260,7 +257,6 @@ def evaluate(experiments, X_train, y_train, threshold=0.2, visualize=False):
             winners.append(experiment)
     
         if visualize: 
-            # TODO: fix this  
             viz_df, centroids = project_results_2d(X_train, y_train, preds, threshold=0.5, clusters=5)
             visualize_results_2d(viz_df, centroids, title=f"Pipeline {i}, Model: {str(get_estimator_from_experiment(experiment))}", c_filter=[])
 
@@ -310,7 +306,6 @@ def validate(X_train, y_train, candidates, visualize=False, splits=5):
         print(f"======== \nCandidate {get_estimator_from_experiment(candidate)}: {mse}\n")
         
         if visualize: 
-            # TODO: fix - this isn't classification based and the PCA support functions were refactored
             preds = candidate.predict(X_train)
 
             viz_df, centroids = project_results_2d(X_train, y_train, preds, threshold=0.5, clusters=5)
@@ -380,36 +375,26 @@ def generate_experiments(nn_input_size=None):
         'device': ['cuda' if gpu_survey() else 'cpu'], 
         }
 
-    # TODO: introduce PCA here, regardless of whether it's running at a higher level to find optimal models  
-    # Pipeline([('scaler', StandardScaler()), ('pca', PCA(n_components=12)), ('grid', GridSearchCV(?, ?, error_score=-1))]),
-
     experiments = [
         Pipeline([('model', DummyRegressor())]), # Control
 
         # Best performers on CV'd trainset as identified by GridSearch 
-        Pipeline([('nn', NeuralNetRegressor(module=WARNet, criterion=MSELoss, optimizer=SGD, max_epochs=1000, lr=0.001, module__n_input=nn_input_size, module__n_hidden1=75, batch_size=1, iterator_train__shuffle=True))]),
-        Pipeline([('grid', GridSearchCV(Ridge(), lr_hparams, n_jobs=-1, error_score=-1))]), 
+        Pipeline([('nn', NeuralNetRegressor(module=WARNet, criterion=MSELoss, optimizer=SGD, max_epochs=200, lr=0.001, module__n_input=nn_input_size, module__n_hidden1=75, batch_size=1, iterator_train__shuffle=True))]),        
         Pipeline([('poly', PolynomialFeatures()), ('model', LinearRegression())]),
-
-        # Prior successful / performant pipelines for mutation...        
-        #Pipeline([('pca', PCA(n_components=5)), ('model', LinearRegression())]),
-        #Pipeline([('grid', GridSearchCV(LinearRegression(), {}, n_jobs=-1, refit=True, error_score=-1))]),
-        #Pipeline([('grid', GridSearchCV(Lasso(), lr_hparams, n_jobs=-1, refit=True, error_score=-1))]), 
-        #Pipeline([('scaler', StandardScaler()), ('grid', GridSearchCV(SVR(), sv_hparams, refit=True, n_jobs=-1, error_score=-1))]),
-        #Pipeline([('scaler', StandardScaler()), ('poly', PolynomialFeatures()), ('grid', GridSearchCV(SVR(), sv_hparams, refit=True, n_jobs=-1, error_score=-1))]),
-        #Pipeline([('grid', GridSearchCV(RandomForestRegressor(), rf_hparams, refit=True, n_jobs=-1,error_score=-1))]),
-        #Pipeline([('grid', GridSearchCV(GradientBoostingRegressor(), gb_hparams, refit=True, n_jobs=-1,error_score=-1))]),
-        #Pipeline([('nn', NeuralNetRegressor(module=WARNet, criterion=MSELoss, optimizer=SGD, max_epochs=100, lr=0.0001, module__n_input=nn_input_size, module__n_hidden1=100, batch_size=1, iterator_train__shuffle=True))]),
-        #Pipeline([('nn', NeuralNetRegressor(module=WARNet, criterion=MSELoss, optimizer=SGD, max_epochs=30, lr=0.5, module__n_input=nn_input_size, module__n_hidden1=10, batch_size=1, iterator_train__shuffle=True))]),
-        #Pipeline(['nn', NeuralNetRegressor(module=WARNet, criterion=MSELoss, optimizer=SGD, max_epochs=15, lr=0.1, module__n_input=nn_input_size, module__n_hidden1=10, iterator_train__shuffle=True))]),
-        # Pipeline([('gridnn', 
-        #            GridSearchCV(
-        #                NeuralNetRegressor(module=WARNet), 
-        #                nn_hparams, 
-        #                refit=True, 
-        #                #n_jobs=-1,
-        #                error_score=-1)
-        #     )]),
+        
+        #Prior successful / performant pipelines for mutation...        
+        Pipeline([('grid', GridSearchCV(Ridge(), lr_hparams, n_jobs=-1, error_score=-1))]), 
+        Pipeline([('pca', PCA(n_components=5)), ('model', LinearRegression())]),
+        Pipeline([('grid', GridSearchCV(LinearRegression(), {}, n_jobs=-1, refit=True, error_score=-1))]),
+        Pipeline([('grid', GridSearchCV(Lasso(), lr_hparams, n_jobs=-1, refit=True, error_score=-1))]), 
+        Pipeline([('scaler', StandardScaler()), ('grid', GridSearchCV(SVR(), sv_hparams, refit=True, n_jobs=-1, error_score=-1))]),
+        Pipeline([('scaler', StandardScaler()), ('poly', PolynomialFeatures()), ('grid', GridSearchCV(SVR(), sv_hparams, refit=True, n_jobs=-1, error_score=-1))]),
+        Pipeline([('grid', GridSearchCV(RandomForestRegressor(), rf_hparams, refit=True, n_jobs=-1,error_score=-1))]),
+        Pipeline([('grid', GridSearchCV(GradientBoostingRegressor(), gb_hparams, refit=True, n_jobs=-1,error_score=-1))]),
+        Pipeline([('nn', NeuralNetRegressor(module=WARNet, criterion=MSELoss, optimizer=SGD, max_epochs=100, lr=0.0001, module__n_input=nn_input_size, module__n_hidden1=100, batch_size=1, iterator_train__shuffle=True))]),
+        Pipeline([('nn', NeuralNetRegressor(module=WARNet, criterion=MSELoss, optimizer=SGD, max_epochs=30, lr=0.5, module__n_input=nn_input_size, module__n_hidden1=10, batch_size=1, iterator_train__shuffle=True))]),
+        Pipeline([('nn', NeuralNetRegressor(module=WARNet, criterion=MSELoss, optimizer=SGD, max_epochs=15, lr=0.1, module__n_input=nn_input_size, module__n_hidden1=10, iterator_train__shuffle=True))]),
+        Pipeline([('gridnn', GridSearchCV(NeuralNetRegressor(module=WARNet), nn_hparams, refit=True, n_jobs=-1,error_score=-1))]),
     ]
 
     return experiments
