@@ -17,3 +17,21 @@ In so doing, I hope to shed light on the relative value of the newer, more expen
 - Batted ball profile: https://baseballsavant.mlb.com/leaderboard/batted-ball
 
 While the structured nature of these datasets supports classical machine learning (ML) methods, the volume and complexity also provide an interesting testbed for neural-network-based ML algorithms.
+
+# Repository 
+
+The moneyball-ml application includes a command-line interface to kick off the data and modeling pipeline. 
+- [mb.py](mb.py): CLI, model pipeline, validation, visualization
+- [nn.py](nn.py): Neural network implementation, storage
+- [data.py](data.py): Data ingest, cleaning, feature implementation, normalization, caching
+- [requirements.txt](requirements.txt): Python package dependencies
+
+# Usage 
+
+A virtual environment is recommended. Python 3.13 and Skorch are not yet compatible. Tested with Python 3.12. 
+
+The app will print usage, to run the data and modeling pipeline for a full grid search: 
+
+```
+python mb.py --conventional --statcast --splits=5
+``` 
