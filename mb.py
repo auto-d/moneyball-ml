@@ -221,7 +221,9 @@ def evaluate(experiments, X_train, y_train, threshold=0.2, visualize=False):
     Returns the experiments (sklearn pipelines) whose error falls below the provided threshold
     """
     winners = []
-    nn_dataset = MBDataset(scale(X_train), y_train)
+
+    X_train_nn = scale(X_train).to_numpy().astype(np.float32)
+    y_train_nn = y_train.to_numpy().astype(np.float32)
 
     for i, experiment in enumerate(experiments):         
 
@@ -232,10 +234,9 @@ def evaluate(experiments, X_train, y_train, threshold=0.2, visualize=False):
         # will be cross validated again before selection and moving on to face any test data. 
         preds = None
         keys = experiment.named_steps.keys()
-        if 'nn' in keys or 'gridnn' in keys: 
-            
-            experiment.fit(nn_dataset, y_train)
-            preds = experiment.predict(nn_dataset)            
+        if 'nn' in keys or 'gridnn' in keys:             
+            experiment.fit(X_train_nn, y_train_nn)
+            preds = experiment.predict(X_train_nn)
         else: 
             experiment.fit(X_train, y_train)
             preds = experiment.predict(X_train)
