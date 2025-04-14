@@ -211,6 +211,19 @@ def build_train_test_set(standard=True, statcast=True):
 
     return X_train, y_train, X_test, y_test
 
+def make_nn_set(X, y, scale_x=True): 
+    """
+    Transform to skorch/torch-compatible inputs
+    """
+
+    Xnn = scale(X) if scale_x else X 
+    Xnn = Xnn.to_numpy().astype(np.float32)
+
+    ynn = y.to_numpy().astype(np.float32)
+    ynn = np.expand_dims(ynn, axis=1)
+
+    return Xnn, ynn
+
 @ignore_warnings(category=ConvergenceWarning)
 def evaluate(experiments, X_train, y_train, threshold=0.2, visualize=False): 
     """
@@ -222,14 +235,11 @@ def evaluate(experiments, X_train, y_train, threshold=0.2, visualize=False):
     """
     winners = []
 
-    X_train_nn = scale(X_train).to_numpy().astype(np.float32)
-    y_train_nn = y_train.to_numpy().astype(np.float32)
-    y_train_nn = np.expand_dims(y_train_nn, axis=1)
+    X_train_nn, y_train_nn = make_nn_set(X_train, y_train)
 
     for i, experiment in enumerate(experiments):         
 
-        # If the estimator in the experiment is a neural network, instantiate a torch Dataset to 
-        # maximize our control over the skorch data transformation, otherwise pass DF as is. Either 
+        # If the estimator in the experiment is a neural network, transform to a skorch-compatible format. 
         # note we're relying on gridsearch to select the optimal model config w/ cross validation. 
         # We then do a lazy test on the TRAINING data here to log the score on the whole set. These
         # will be cross validated again before selection and moving on to face any test data. 
@@ -263,7 +273,7 @@ def validate(X_train, y_train, candidates, visualize=False, splits=5):
     """
     kf = KFold(n_splits=splits, shuffle=False)
 
-    winner_mae = None
+    winner_mse = None
     winner = None
     
     # skorch will eat a torch DataSet if passed directly to model.fit, but sklearn's transformations 
@@ -281,12 +291,15 @@ def validate(X_train, y_train, candidates, visualize=False, splits=5):
             preds = None 
 
             # NN-specific dataset transformation required before train/predict here       
-            if 'nn' in candidate.named_steps.keys(): 
+            keys = candidate.named_steps.keys()
+            if 'nn' in keys or 'gridnn' in keys: 
+                    
+                X_train_nn, y_train_nn = make_nn_set(X_train_scaled.iloc[train_ix], y_train.iloc[train_ix], scale_x=False)
                 
-                trainset = MBDataset(X_train_scaled.iloc[train_ix], y_train.iloc[train_ix])
-                testset = MBDataset(X_train_scaled.iloc[test_ix], y_train.iloc[test_ix])
-                candidate.fit(trainset) 
-                preds = candidate.predict(testset)
+                candidate.fit(X_train_nn, y_train_nn) 
+                
+                X_test_nn, _ = make_nn_set(X_train_scaled.iloc[test_ix], y_train.iloc[test_ix], scale_x=False)
+                preds = candidate.predict(X_test_nn)
             else: 
                 candidate.fit(X_train.iloc[train_ix], y_train.iloc[train_ix])
                 preds = candidate.predict(X_train.iloc[test_ix])
@@ -303,11 +316,11 @@ def validate(X_train, y_train, candidates, visualize=False, splits=5):
             viz_df, centroids = project_results_2d(X_train, y_train, preds, threshold=0.5, clusters=5)
             visualize_results_2d(viz_df, centroids, title=f"Model: {str(get_estimator_from_experiment(candidate))} @ {mse}", c_filter=None)
         
-        if (winner_mae is None) or (winner_mae > mse):
-            winner_mae = mse 
+        if (winner_mse is None) or (winner_mse > mse):
+            winner_mse = mse 
             winner = candidate 
     
-    return winner, winner_mae
+    return winner, winner_mse
     
 def get_estimator_from_experiment(experiment):
     """
@@ -347,7 +360,7 @@ def generate_experiments(nn_input_size=None):
     gb_hparams = { 'loss' : ['squared_error', 'absolute_error'], 'learning_rate' : [(0.1 * 10 ** x) for x in range(0, 4)]}
     nn_hparams = { 
         'max_epochs' : [25], 
-        'lr': [1/(10**x) for x in range(1,4)], 
+        'lr': [1/(10**x) for x in range(3,5)], 
         'optimizer': [optim.SGD], #[ optim.SGD, optim.Adam ], 
         'criterion': [MSELoss], 
         # We don't have a lot of data here, batching may be faster but we lose information in the process - stick w/ 1
@@ -355,9 +368,9 @@ def generate_experiments(nn_input_size=None):
         # Cue the torch DataLoader to shuffle training data
         'iterator_train__shuffle': [True], 
         'module__n_input' : [nn_input_size], 
-        'module__n_hidden1': range(50,100,25), 
-        'module__n_hidden2': range(0,50,25),
-        'module__n_hidden2': range(0,10,5),
+        'module__n_hidden1': range(75,100,25), 
+        'module__n_hidden2': range(25,50,25),
+        'module__n_hidden2': range(0,5,5),
         # GridSearch implements cross validation, disable skorch internal holdout 
         'train_split': [None], 
         # Leverage cuda device if we find it/them
@@ -387,7 +400,7 @@ def generate_experiments(nn_input_size=None):
                        NeuralNetRegressor(module=WARNet), 
                        nn_hparams, 
                        refit=True, 
-                       n_jobs=-1,
+                       #n_jobs=-1,
                        error_score=-1)
             )]),
         # TODO: addPCA transform before NN estimator here to
@@ -417,57 +430,26 @@ def search(X_train, y_train, splits=3, visualize=False):
 
     return winner, mse
 
-def monolithic_search(splits=3, visualize=False): 
+def monolithic_search(conventional=True, statcast=True, splits=3, visualize=False): 
     """
     Look for a single algorithm to maximize performance across all features
     """
-    X_train, y_train, X_test, y_test = build_train_test_set(standard=True, statcast=True) 
-    winner, mae = search(X_train, y_train, splits=splits, visualize=visualize)
-    
-    # TODO: predict on the test set and check performance! below needs to be refactored 
-    return winner, mae
+    X_train, y_train, X_test, y_test = build_train_test_set(True, True) 
+    winner, mse = search(X_train, y_train, splits=splits, visualize=visualize)
 
-def cluster_search(dimensions=2, splits=3, visualize=False):  
-    """
-    Perform a cluster-based hyperparameter and model search across all promising algorithms, 
-    using the resulting ensemble to predict classes 
-
-    NOTE: this is a refactored grid search pipeline used in the kaggle comp
-    TODO: ensure this can reduce down to the monolithic search by requesting a single cluster
-    """    
-    X_train, y_train, X_test, y_test = build_train_test_set(standard=True, statcast=False) 
-    
-    # Leverage the low-dimensional feature and associated label to isolate prominent sub-distributions 
-    # and fit an experiment(pipeline) tailored to classify each
-    
-    # TODO complete dimensionality reduction and clustering 
-    if dimensions <= 1: 
-        raise ValueError()
-    
-    train_Xstd['cluster'] = [1] * len(train_Xstd)
-    
-    cluster_winners = { }  
-    for cluster in X_train['cluster'].unique(): 
+    print(f"Winner identified: {winner} @ {mse}")
         
-        X_train_clust = X_train[X_train['cluster'] == cluster]
-        y_train_clust = pd.DataFrame(y_train).join(X_train_clust, how='inner')['label']
-
-        # Where our clusters consist of uniform labels, short-circuit the search, the best strategy is 
-        # to predict this label for any input
-        winner, mse = search(X_train_clust, y_train_clust, splits=splits, visualize=visualize)
-        print(f"Best model identified for cluster {cluster}: {get_estimator_from_experiment(winner)} (MSE of {mse}).")
-
-        cluster_winners[cluster] = winner
-
-    return cluster_winners 
+    X_test_nn, y_test_nn = make_nn_set(X_test, y_test)
+    preds = winner.predict(X_test_nn)
+    mse = metrics.mean_squared_error(y_test_nn, preds)
+    print(f"Test MSE {mse}")
 
 def main(**args): 
     """
     CLI entry point and arg handler
     """
     parser = argparse.ArgumentParser()
-    
-    parser.add_argument("-d", "--dimensions")
+
     parser.add_argument("-k", "--splits")
     parser.add_argument("-c", "--conventional", action=argparse.BooleanOptionalAction)
     parser.add_argument("-s", "--statcast", action=argparse.BooleanOptionalAction)
@@ -476,8 +458,7 @@ def main(**args):
     parser.set_defaults(visualize=False)
     args = parser.parse_args()
     
-    monolithic_search()
-    #cluster_search(int(args.dimensions), args.conventional, args.statcast, int(args.splits), args.visualize)
+    monolithic_search(args.conventional, args.statcast, splits=args.splits, visualize=args.visualize)
 
 if __name__ == "__main__": 
     main()
