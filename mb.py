@@ -172,14 +172,14 @@ def build_train_test_set(standard=True, statcast=True):
 
     # Create training sets for standard and statcast data, holding WAR out as a label
     # regardless of which dataset(s) will be used
-    std22 = load_standard(2023)
+    std22 = load_standard(2022)
     std23 = load_standard(2023)
     std24 = load_standard(2024)
 
     y_train = std23['WAR']
     y_test = std24['WAR']    
 
-    sc22 = load_statcast(2023) if statcast else None
+    sc22 = load_statcast(2022) if statcast else None
     sc23 = load_statcast(2023) if statcast else None
     sc24 = load_statcast(2024) if statcast else None
     
@@ -198,7 +198,10 @@ def build_train_test_set(standard=True, statcast=True):
     # We can only train on players for which we have a label, intersect our training data 
     # with the player IDs from the labelset. Similar logic for the test set.
     X_train = X_train[X_train.index.isin(y_train.index)]
-    X_test = X_test[X_test.index.isin(y_test.index)]
+    y_train = y_train[y_train.index.isin(X_train.index)]
+
+    X_test = X_test[X_test.index.isin(y_test.index)]   
+    y_test = y_test[y_test.index.isin(X_test.index)]
     
     if len(X_train) != len(y_train) or len(X_test) != len(y_test) or (len(X_train.columns) != len(X_test.columns)):
         raise ValueError("Inconsistent data and label lengths, aborting run!")
@@ -221,7 +224,7 @@ def make_nn_set(X, y=None, scale_x=True):
     Xnn = Xnn.to_numpy().astype(np.float32)
 
     ynn = None 
-    if y:
+    if y is not None:
         ynn = y.to_numpy().astype(np.float32)
         ynn = np.expand_dims(ynn, axis=1)
 
@@ -242,6 +245,9 @@ def run_experiments(experiments, X_train, y_train, threshold=0.5):
 
     for i, experiment in enumerate(experiments):         
 
+        print(f"===================================\n")
+        print(f"Experiment {i}:\n")
+        
         # If the estimator in the experiment is a neural network, use a skorch-compatible format. 
         # Note we're relying on gridsearch to select the optimal model config w/ cross validation. 
         # We then do a lazy test on the TRAINING data here to log the score on the whole set. These
@@ -255,12 +261,17 @@ def run_experiments(experiments, X_train, y_train, threshold=0.5):
             X = X_train 
             y = y_train
         
-        experiment.fit(X_train, y_train)
-        preds = experiment.predict(X_train)
+        experiment.fit(X, y)
+        preds = experiment.predict(X)
 
         mse = metrics.mean_squared_error(y_train, preds)
 
-        print(f"==== \nExperiment {experiment}/{i}: {mse} ==========================\n")
+        print(f"⚙️ {experiment}/{i}:")
+        print(f"⚡️ best estimator : {experiment.best_estimator}")
+        print(f"⚡️ best params : {experiment.best_params}")
+        print(f"⚡️ best score : {experiment.best_score}")
+        print(f"⚡️ MSE: {mse}")
+        print(f"-----------------------------------\n")
 
         if mse < threshold: 
             winners.append(experiment)
@@ -290,10 +301,7 @@ def validate(X_train, y_train, candidates, splits=5):
             
             preds = None 
 
-            # NN-specific dataset transformation required before train/predict here       
-            keys = candidate.named_steps.keys()
-            if 'nn' in keys or 'gridnn' in keys: 
-                    
+            if is_nn_experiment(candidate):                     
                 X, y = make_nn_set(X_train_scaled.iloc[train_ix], y_train.iloc[train_ix], scale_x=False)
                 X_val, _ = make_nn_set(X_train_scaled.iloc[test_ix], scale_x=False)
                 
@@ -370,18 +378,18 @@ def build_experiments(nn_input_size):
     rf_hparams = { 'min_samples_leaf' : range(1,11,5), 'n_estimators': range(20,100,40), 'max_depth': range(5,25,10)}
     gb_hparams = { 'loss' : ['squared_error', 'absolute_error'], 'learning_rate' : [(0.1 * 10 ** x) for x in range(0, 4)]}
     nn_hparams = { 
-        'max_epochs' : [25], 
+        'max_epochs' : [500], 
         'lr': [1/(10**x) for x in range(3,5)], 
         'optimizer': [optim.SGD], #[ optim.SGD, optim.Adam ], 
         'criterion': [MSELoss], 
         # We don't have a lot of data here, batching may be faster but we lose information in the process - stick w/ 1
-        'batch_size': [1],  
+        'batch_size': [1,5], 
         # Cue the torch DataLoader to shuffle training data
         'iterator_train__shuffle': [True], 
         'module__n_input' : [nn_input_size], 
-        'module__n_hidden1': range(75,100,25), 
-        'module__n_hidden2': range(25,50,25),
-        'module__n_hidden2': range(0,5,5),
+        'module__n_hidden1': range(75,150,25), 
+        'module__n_hidden2': range(25,50,5),
+        'module__n_hidden2': range(0,10,5),
         # GridSearch implements cross validation, disable skorch internal holdout 
         'train_split': [None], 
         # Leverage cuda device if we find it/them
@@ -390,18 +398,14 @@ def build_experiments(nn_input_size):
 
     experiments = [
         Pipeline([('model', DummyRegressor())]), # Control      
+        Pipeline([('gridnn', GridSearchCV(NeuralNetRegressor(module=WARNet), nn_hparams, n_jobs=-1,error_score=-1))]),
         Pipeline([('grid', GridSearchCV(Ridge(), lr_hparams, n_jobs=-1, error_score=-1))]), 
-        Pipeline([('pca', PCA(n_components=5)), ('model', LinearRegression())]),
         Pipeline([('grid', GridSearchCV(LinearRegression(), {}, n_jobs=-1, error_score=-1))]),
         Pipeline([('grid', GridSearchCV(Lasso(), lr_hparams, n_jobs=-1, error_score=-1))]), 
         Pipeline([('scaler', StandardScaler()), ('grid', GridSearchCV(SVR(), sv_hparams, n_jobs=-1, error_score=-1))]),
         Pipeline([('scaler', StandardScaler()), ('poly', PolynomialFeatures()), ('grid', GridSearchCV(SVR(), sv_hparams, n_jobs=-1, error_score=-1))]),
         Pipeline([('grid', GridSearchCV(RandomForestRegressor(), rf_hparams, n_jobs=-1, error_score=-1))]),
         Pipeline([('grid', GridSearchCV(GradientBoostingRegressor(), gb_hparams, n_jobs=-1,error_score=-1))]),
-        Pipeline([('nn', NeuralNetRegressor(module=WARNet, criterion=MSELoss, optimizer=SGD, max_epochs=100, lr=0.0001, module__n_input=nn_input_size, module__n_hidden1=100, batch_size=1, iterator_train__shuffle=True))]),
-        Pipeline([('nn', NeuralNetRegressor(module=WARNet, criterion=MSELoss, optimizer=SGD, max_epochs=30, lr=0.5, module__n_input=nn_input_size, module__n_hidden1=10, batch_size=1, iterator_train__shuffle=True))]),
-        Pipeline([('nn', NeuralNetRegressor(module=WARNet, criterion=MSELoss, optimizer=SGD, max_epochs=15, lr=0.1, module__n_input=nn_input_size, module__n_hidden1=10, iterator_train__shuffle=True))]),
-        Pipeline([('gridnn', GridSearchCV(NeuralNetRegressor(module=WARNet), nn_hparams, n_jobs=-1,error_score=-1))]),
     ]
 
     return experiments
@@ -415,6 +419,8 @@ def build_candidates(nn_input_size):
     """
     candidates = [
         Pipeline([('model', DummyRegressor())]), # Control
+        Pipeline([('grid', LinearRegression())]),
+        Pipeline([('grid', GradientBoostingRegressor(loss='squared_error', learning_rate=1.))]),
         Pipeline([('nn', NeuralNetRegressor(
             module=WARNet, 
             criterion=MSELoss, 
@@ -439,7 +445,7 @@ def search(X_train, y_train, splits=3, threshold=0.3, visualize=False):
     experiments = build_experiments(nn_input_size=len(X_train.columns))
     candidates = run_experiments(experiments, X_train, y_train, threshold)
 
-    print(f"Algorithm search identified: {len(candidates)} below {threshold} MSE.")
+    print(f"Algorithm search identified: {len(candidates)} below {threshold} MSE:")
 
 def evaluate(X_train, y_train, X_test, y_test, splits=5, visualize=False): 
     """
@@ -449,7 +455,7 @@ def evaluate(X_train, y_train, X_test, y_test, splits=5, visualize=False):
     candidates = build_candidates(nn_input_size=len(X_train.columns))
     winner, mse = validate(X_train, y_train, candidates, splits)
     if winner is not None: 
-        print(f"Best model pipeline identified: {winner} (mse: {mse}).")
+        print(f"Best model pipeline identified: {get_estimator_from_experiment(winner)} (mse: {mse}).")
 
         if is_nn_experiment(winner):               
             X, y = make_nn_set(X_test, y_test)
@@ -462,7 +468,7 @@ def evaluate(X_train, y_train, X_test, y_test, splits=5, visualize=False):
         print(f"Test MSE reported : {mse}")
           
         if visualize: 
-            # TODO: make this work again? 
+            # TODO: make this work again and enhance?  ...  or just generate visuals in the notebook.
             viz_df, centroids = project_results_2d(X_train, y_train, preds, threshold=0.5, clusters=5)
             visualize_results_2d(viz_df, centroids, title=f"Pipeline: {str(get_estimator_from_experiment(winner))}", c_filter=[])
         
@@ -476,9 +482,10 @@ def main(**args):
     parser = argparse.ArgumentParser()
 
     group = parser.add_mutually_exclusive_group() 
-    group.add_argument_group("-s", "--search", action=argparse.BooleanOptionalAction)
-    group.add_argument_group("-e", "--evaluate", action=argparse.BooleanOptionalAction)
-    parser.add_argument("--splits")
+    group.add_argument("-s", "--search", action=argparse.BooleanOptionalAction)
+    group.add_argument("-e", "--evaluate", action=argparse.BooleanOptionalAction)
+    parser.add_argument("-k", "--splits")
+    parser.add_argument("-t", "--threshold")
     parser.add_argument("--conventional", action=argparse.BooleanOptionalAction)
     parser.add_argument("--statcast", action=argparse.BooleanOptionalAction)
     parser.add_argument("--visualize", action=argparse.BooleanOptionalAction)
@@ -491,12 +498,12 @@ def main(**args):
     # Search OR evaluate ... nothing really precluding these from being running in series, but
     # there's not really a use-case for it as we are either searching for new configurations or 
     # testing the previously identified (hopefully optimal) ones
-    if args.search and args.visualize is None: 
-        search(X_train, y_train, splits=args.splits)        
-    elif args.evaluate: 
-        evaluate(X_train, y_train, X_test, y_test, args.splits, args.visualize)
+    if args.search and (args.visualize is False): 
+        search(X_train, y_train, threshold=float(args.threshold), splits=int(args.splits))        
+    elif args.evaluate and (args.threshold is False): 
+        evaluate(X_train, y_train, X_test, y_test, int(args.splits), args.visualize)
     else: 
-        parser.usage()
+        parser.print_help()
 
 if __name__ == "__main__": 
     main()
