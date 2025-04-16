@@ -876,6 +876,16 @@ def load_sc_base(year, dir_):
             ordinal=ordinal_columns, 
             boolean=bool_columns)
         
+        # Statcast coded the split fastball 'FS' in 2022, but dropped it in 2023. 
+        # These were added in 2023 (but not present in 2022)
+        # 'ST' - sweeper 
+        # 'FO' - forkball 
+        # 'SC' - screwball 
+        unstable_pitch_enums = 'F0', 'FS', 'ST',  'SC'        
+        for pitch in unstable_pitch_enums: 
+            if pitch in cdf.columns: 
+                cdf.drop(pitch, axis=1, inplace=True)
+        
         cdf.to_parquet(file)
 
     return cdf
@@ -985,15 +995,11 @@ def load_sc_pitching(year, dir_):
         'pitch_type_FA' : ['sum'], 
         'pitch_type_FC' : ['sum'], 
         'pitch_type_FF' : ['sum'], 
-        'pitch_type_FO' : ['sum'], 
-        'pitch_type_FS' : ['sum'], 
         'pitch_type_KC' : ['sum'], 
         'pitch_type_KN' : ['sum'], 
         'pitch_type_PO' : ['sum'], 
-        'pitch_type_SC' : ['sum'], 
         'pitch_type_SI' : ['sum'], 
         'pitch_type_SL' : ['sum'], 
-        'pitch_type_ST' : ['sum'], 
         'pitch_type_SV' : ['sum'], 
         #'game_date', we don't have temporal data for other statcast metrics, have to retreat to season-level data :(
         'release_speed' : ['mean'], 
@@ -1062,7 +1068,7 @@ def load_sc_batting(year, dir_):
     Load and clean batting data
     """
     sc_df = load_sc_base(year, dir_)
-
+ 
     df_batter = sc_df.groupby('batter').agg({
         'pitch_type_CH' : ['sum'], 
         'pitch_type_CS' : ['sum'], 
@@ -1071,15 +1077,11 @@ def load_sc_batting(year, dir_):
         'pitch_type_FA' : ['sum'], 
         'pitch_type_FC' : ['sum'], 
         'pitch_type_FF' : ['sum'], 
-        'pitch_type_FO' : ['sum'], 
-        'pitch_type_FS' : ['sum'], 
         'pitch_type_KC' : ['sum'], 
         'pitch_type_KN' : ['sum'], 
         'pitch_type_PO' : ['sum'], 
-        'pitch_type_SC' : ['sum'], 
         'pitch_type_SI' : ['sum'], 
         'pitch_type_SL' : ['sum'], 
-        'pitch_type_ST' : ['sum'], 
         'pitch_type_SV' : ['sum'], 
         #'game_date', we don't have temporal data for other statcast metrics, have to retreat to season-level data :(
         'release_speed' : ['mean'], 

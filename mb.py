@@ -403,7 +403,6 @@ def search(X_train, y_train, splits=3, visualize=False):
     """
     Perform a hyperparameter and model search across all promising algorithms
     """
-
     min_loss = 0.5
     experiments = generate_experiments(nn_input_size=len(X_train.columns))
     candidates = evaluate(experiments, X_train, y_train, min_loss, False)
