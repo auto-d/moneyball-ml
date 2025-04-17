@@ -266,10 +266,12 @@ def run_experiments(experiments, X_train, y_train, threshold=0.5):
 
         mse = metrics.mean_squared_error(y_train, preds)
 
+        grid_name = 'gridnn' if is_nn_experiment(experiment) else 'grid'
+
         print(f"⚙️ {experiment}/{i}:")
-        print(f"⚡️ best estimator : {experiment.best_estimator}")
-        print(f"⚡️ best params : {experiment.best_params}")
-        print(f"⚡️ best score : {experiment.best_score}")
+        print(f"⚡️ best estimator : {experiment.named_steps[grid_name].best_estimator_}")
+        print(f"⚡️ best params : {experiment.named_steps[grid_name].best_params_}")
+        print(f"⚡️ best score : {experiment.named_steps[grid_name].best_score_}")
         print(f"⚡️ MSE: {mse}")
         print(f"-----------------------------------\n")
 
@@ -396,10 +398,9 @@ def build_experiments(nn_input_size):
         'device': ['cuda' if gpu_survey() else 'cpu'], 
         }
 
-    experiments = [
-        Pipeline([('model', DummyRegressor())]), # Control      
-        Pipeline([('gridnn', GridSearchCV(NeuralNetRegressor(module=WARNet), nn_hparams, n_jobs=-1,error_score=-1))]),
+    experiments = [    
         Pipeline([('grid', GridSearchCV(Ridge(), lr_hparams, n_jobs=-1, error_score=-1))]), 
+        Pipeline([('gridnn', GridSearchCV(NeuralNetRegressor(module=WARNet, verbose=0), nn_hparams, n_jobs=-1,error_score=-1))]),        
         Pipeline([('grid', GridSearchCV(LinearRegression(), {}, n_jobs=-1, error_score=-1))]),
         Pipeline([('grid', GridSearchCV(Lasso(), lr_hparams, n_jobs=-1, error_score=-1))]), 
         Pipeline([('scaler', StandardScaler()), ('grid', GridSearchCV(SVR(), sv_hparams, n_jobs=-1, error_score=-1))]),
