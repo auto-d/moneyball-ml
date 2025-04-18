@@ -24,7 +24,7 @@ from torch.optim import SGD
 import torch.cuda
 from skorch import NeuralNetRegressor
 from skorch.helper import SkorchDoctor
-from data import load_statcast, load_standard, find_na
+from data import load_statcast, load_standard, find_na, find_player
 from nn import WARNet, MBDataset
 
 def gpu_survey(): 
@@ -375,23 +375,23 @@ def build_experiments(nn_input_size):
      - 'gridnn' for GridSearch'd skorch nn estimators
     """
 
-    lr_hparams = { 'alpha' : [2**x for x in range(0,10,1) ] }
-    sv_hparams = { 'C' : [0.2, 0.4], 'kernel' : ['poly', 'rbf' ] }
-    rf_hparams = { 'min_samples_leaf' : range(1,11,5), 'n_estimators': range(20,100,40), 'max_depth': range(5,25,10)}
-    gb_hparams = { 'loss' : ['squared_error', 'absolute_error'], 'learning_rate' : [(0.1 * 10 ** x) for x in range(0, 4)]}
+    lr_hparams = { 'alpha' : [(0.0001 * 10 ** x) for x in range(0,4,1) ] }
+    sv_hparams = { 'C' : [0.3, 0.4, 0.5], 'kernel' : ['rbf' ] }
+    rf_hparams = { 'min_samples_leaf' : range(3,8,1), 'n_estimators': range(10,30,5), 'max_depth': range(10,20,2)}
+    gb_hparams = { 'loss' : 'squared_error', 'learning_rate' : [(0.0001 * 10 ** x) for x in range(0, 4)]}
     nn_hparams = { 
         'max_epochs' : [500], 
-        'lr': [1/(10**x) for x in range(3,5)], 
+        'lr': [1/(10**x) for x in range(2,4)], 
         'optimizer': [optim.SGD], #[ optim.SGD, optim.Adam ], 
         'criterion': [MSELoss], 
         # We don't have a lot of data here, batching may be faster but we lose information in the process - stick w/ 1
-        'batch_size': [1,5], 
+        'batch_size': [5,7], 
         # Cue the torch DataLoader to shuffle training data
         'iterator_train__shuffle': [True], 
         'module__n_input' : [nn_input_size], 
-        'module__n_hidden1': range(75,150,25), 
-        'module__n_hidden2': range(25,50,5),
-        'module__n_hidden2': range(0,10,5),
+        'module__n_hidden1': range(80,120,10), 
+        'module__n_hidden2': range(0,45,10),
+        'module__n_hidden3': range(0,10,5),
         # GridSearch implements cross validation, disable skorch internal holdout 
         'train_split': [None], 
         # Leverage cuda device if we find it/them
@@ -399,14 +399,12 @@ def build_experiments(nn_input_size):
         }
 
     experiments = [    
-        Pipeline([('grid', GridSearchCV(Ridge(), lr_hparams, n_jobs=-1, error_score=-1))]), 
-        Pipeline([('gridnn', GridSearchCV(NeuralNetRegressor(module=WARNet, verbose=0), nn_hparams, n_jobs=-1,error_score=-1))]),        
-        Pipeline([('grid', GridSearchCV(LinearRegression(), {}, n_jobs=-1, error_score=-1))]),
-        Pipeline([('grid', GridSearchCV(Lasso(), lr_hparams, n_jobs=-1, error_score=-1))]), 
-        Pipeline([('scaler', StandardScaler()), ('grid', GridSearchCV(SVR(), sv_hparams, n_jobs=-1, error_score=-1))]),
-        Pipeline([('scaler', StandardScaler()), ('poly', PolynomialFeatures()), ('grid', GridSearchCV(SVR(), sv_hparams, n_jobs=-1, error_score=-1))]),
-        Pipeline([('grid', GridSearchCV(RandomForestRegressor(), rf_hparams, n_jobs=-1, error_score=-1))]),
-        Pipeline([('grid', GridSearchCV(GradientBoostingRegressor(), gb_hparams, n_jobs=-1,error_score=-1))]),
+        Pipeline([('grid', GridSearchCV(Ridge(), lr_hparams, scoring='neg_mean_squared_error', n_jobs=-1, error_score=-1))]), 
+        Pipeline([('gridnn', GridSearchCV(NeuralNetRegressor(module=WARNet, verbose=0), nn_hparams, scoring='neg_mean_squared_error', n_jobs=-1,error_score=-1))]), 
+        Pipeline([('grid', GridSearchCV(Lasso(), lr_hparams, scoring='neg_mean_squared_error', n_jobs=-1, error_score=-1))]), 
+        Pipeline([('scaler', StandardScaler()), ('grid', GridSearchCV(SVR(), sv_hparams, scoring='neg_mean_squared_error', n_jobs=-1, error_score=-1))]),
+        Pipeline([('grid', GridSearchCV(RandomForestRegressor(), rf_hparams, scoring='neg_mean_squared_error', n_jobs=-1, error_score=-1))]),
+        Pipeline([('grid', GridSearchCV(GradientBoostingRegressor(), gb_hparams, scoring='neg_mean_squared_error', n_jobs=-1,error_score=-1))]),
     ]
 
     return experiments
@@ -420,19 +418,23 @@ def build_candidates(nn_input_size):
     """
     candidates = [
         Pipeline([('model', DummyRegressor())]), # Control
-        Pipeline([('grid', LinearRegression())]),
-        Pipeline([('grid', GradientBoostingRegressor(loss='squared_error', learning_rate=1.))]),
+        Pipeline([('model', LinearRegression())]),
+        Pipeline([('model', GradientBoostingRegressor(loss='squared_error', learning_rate=1.))]),
         Pipeline([('nn', NeuralNetRegressor(
             module=WARNet, 
             criterion=MSELoss, 
             optimizer=SGD, 
-            max_epochs=200, 
+            # TODO: find the knee in the curve based on the doctor output and set this to limit overfit
+            max_epochs=400, 
             lr=0.001, 
             module__n_input=nn_input_size, 
-            module__n_hidden1=75, 
-            batch_size=1, 
+            module__n_hidden1=100, 
+            module__n_hidden2=5,
+            batch_size=20, 
             iterator_train__shuffle=True))]),
         Pipeline([('poly', PolynomialFeatures()), ('model', LinearRegression())]),
+        Pipeline([('model', RandomForestRegressor(max_depth=15, min_samples_leaf=6, n_estimators=20))]),
+        Pipeline([('model', GradientBoostingRegressor(learning_rate=0.1))]),
     ]
 
     return candidates
@@ -465,13 +467,31 @@ def evaluate(X_train, y_train, X_test, y_test, splits=5, visualize=False):
             y = y_test
 
         preds = winner.predict(X)
-        mse = metrics.mean_squared_error(y, preds)
+        mse = metrics.mean_squared_error(y, preds, multioutput='raw_values')
         print(f"Test MSE reported : {mse}")
           
+        errors = (y - preds)
+        results = pd.DataFrame() 
+        results['player_id'] = y.index
+        results['war'] = y.to_numpy()
+        results['war_p'] = preds
+        results['error'] = errors.to_numpy()
+        results['player_first'] = results['player_id'].apply(lambda x: find_player(id=[int(x)])['name_first'])
+        results['player_last'] = results['player_id'].apply(lambda x: find_player(id=[int(x)])['name_last'])
+        results.sort_values(by='error', inplace=True)        
+        print("Best and worst predictions follow: ")
+        print(results.head())
+        print(results.tail())
+
         if visualize: 
+            
+            # TODO: plot the MSE of the best model 
+            plt.figure()
+            plt.scatter(y.index, errors)
+
             # TODO: make this work again and enhance?  ...  or just generate visuals in the notebook.
-            viz_df, centroids = project_results_2d(X_train, y_train, preds, threshold=0.5, clusters=5)
-            visualize_results_2d(viz_df, centroids, title=f"Pipeline: {str(get_estimator_from_experiment(winner))}", c_filter=[])
+            #viz_df, centroids = project_results_2d(X_train, y_train, preds, threshold=0.5, clusters=5)
+            #visualize_results_2d(viz_df, centroids, title=f"Pipeline: {str(get_estimator_from_experiment(winner))}", c_filter=[])
         
     else: 
         print(f"No winner reported!")
@@ -492,6 +512,7 @@ def main(**args):
     parser.add_argument("--visualize", action=argparse.BooleanOptionalAction)
     
     parser.set_defaults(visualize=False)
+    parser.set_defaults(threshold=False)
     args = parser.parse_args()
     
     X_train, y_train, X_test, y_test = build_train_test_set(args.conventional, args.statcast) 

@@ -6,7 +6,7 @@ from skorch import NeuralNetRegressor
 
 class WARNet(nn.Module): 
 
-    def __init__(self, n_input, n_hidden1=1, n_hidden2=0, n_hidden3=0, act=True):
+    def __init__(self, n_input, n_hidden1=1, n_hidden2=0, n_hidden3=0):
         """
         Constructor for our WAR regression network 
 
@@ -15,14 +15,13 @@ class WARNet(nn.Module):
         """
         super().__init__()
 
-        self.act = act 
         self.linear1 = nn.Linear(n_input, n_hidden1)
         
         if n_hidden2: 
             self.linear2 = nn.Linear(n_hidden1, n_hidden2)
 
             if n_hidden3: 
-                self.linear2 = nn.Linear(n_hidden2, n_hidden3)
+                self.linear3 = nn.Linear(n_hidden2, n_hidden3)
                 self.out = nn.Linear(n_hidden3, 1)
             else: 
                 self.linear3 = None
@@ -45,16 +44,15 @@ class WARNet(nn.Module):
         pipeline and the return value must abide conversion to an np array. 
         """
         x = self.linear1(x) 
-
-        x = F.relu(x) if self.act else x
+        x = F.relu(x)
         
         if self.linear2: 
             x = self.linear2(x) 
-            x = F.relu(x) if self.act else x
+            x = F.relu(x)
 
             if self.linear3: 
                 x = self.linear3(x) 
-                x = F.relu(x) if self.act else x
+                x = F.relu(x)
 
         x = self.out(x) 
         
