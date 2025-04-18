@@ -324,6 +324,16 @@ def validate(X_train, y_train, candidates, splits=5):
             winner_mse = mse 
             winner = candidate 
     
+    # Retrain the winning pipeline on the full dataset
+    if is_nn_experiment(winner): 
+        X, y = make_nn_set(X_train_scaled, y_train, scale_x=False)
+        X_val, _ = make_nn_set(X_train_scaled, scale_x=False)
+    else: 
+        X = X_train
+        y = y_train
+
+    winner.fit(X, y)
+    
     return winner, winner_mse
 
 def is_nn_experiment(experiment): 
@@ -419,7 +429,7 @@ def build_candidates(nn_input_size):
     candidates = [
         Pipeline([('model', DummyRegressor())]), # Control
         Pipeline([('model', LinearRegression())]),
-        Pipeline([('model', GradientBoostingRegressor(loss='squared_error', learning_rate=1.))]),
+        Pipeline([('model', Lasso(alpha=0.1))]), 
         Pipeline([('nn', NeuralNetRegressor(
             module=WARNet, 
             criterion=MSELoss, 
@@ -429,12 +439,13 @@ def build_candidates(nn_input_size):
             lr=0.001, 
             module__n_input=nn_input_size, 
             module__n_hidden1=100, 
-            module__n_hidden2=5,
-            batch_size=20, 
-            iterator_train__shuffle=True))]),
-        Pipeline([('poly', PolynomialFeatures()), ('model', LinearRegression())]),
-        Pipeline([('model', RandomForestRegressor(max_depth=15, min_samples_leaf=6, n_estimators=20))]),
-        Pipeline([('model', GradientBoostingRegressor(learning_rate=0.1))]),
+            #module__n_hidden2=5,
+            batch_size=7, 
+            iterator_train__shuffle=True, 
+            verbose=0))]),
+        # Pipeline([('poly', PolynomialFeatures()), ('model', LinearRegression())]),
+        # Pipeline([('model', RandomForestRegressor(max_depth=85, min_samples_leaf=6, n_estimators=25))]),
+        # Pipeline([('model', GradientBoostingRegressor(learning_rate=0.1))]),
     ]
 
     return candidates
@@ -449,6 +460,19 @@ def search(X_train, y_train, splits=3, threshold=0.3, visualize=False):
     candidates = run_experiments(experiments, X_train, y_train, threshold)
 
     print(f"Algorithm search identified: {len(candidates)} below {threshold} MSE:")
+
+def build_results(y_test, preds): 
+    errors = (y_test.to_numpy() - preds)
+    results = pd.DataFrame() 
+    results['player_id'] = y_test.index
+    results['war'] = y_test.to_numpy()
+    results['war_p'] = preds
+    results['error'] = errors
+    results['player_first'] = results['player_id'].apply(lambda x: find_player(id=[int(x)])['name_first'])
+    results['player_last'] = results['player_id'].apply(lambda x: find_player(id=[int(x)])['name_last'])
+    results.sort_values(by='error', inplace=True)
+    
+    return results
 
 def evaluate(X_train, y_train, X_test, y_test, splits=5, visualize=False): 
     """
@@ -466,19 +490,12 @@ def evaluate(X_train, y_train, X_test, y_test, splits=5, visualize=False):
             X = X_test
             y = y_test
 
-        preds = winner.predict(X)
+        preds = winner.predict(X).flatten()
         mse = metrics.mean_squared_error(y, preds, multioutput='raw_values')
         print(f"Test MSE reported : {mse}")
           
-        errors = (y - preds)
-        results = pd.DataFrame() 
-        results['player_id'] = y.index
-        results['war'] = y.to_numpy()
-        results['war_p'] = preds
-        results['error'] = errors.to_numpy()
-        results['player_first'] = results['player_id'].apply(lambda x: find_player(id=[int(x)])['name_first'])
-        results['player_last'] = results['player_id'].apply(lambda x: find_player(id=[int(x)])['name_last'])
-        results.sort_values(by='error', inplace=True)        
+        results = build_results(y_test, preds)
+        
         print("Best and worst predictions follow: ")
         print(results.head())
         print(results.tail())
@@ -487,7 +504,7 @@ def evaluate(X_train, y_train, X_test, y_test, splits=5, visualize=False):
             
             # TODO: plot the MSE of the best model 
             plt.figure()
-            plt.scatter(y.index, errors)
+            plt.scatter(y_test.index, results.error)
 
             # TODO: make this work again and enhance?  ...  or just generate visuals in the notebook.
             #viz_df, centroids = project_results_2d(X_train, y_train, preds, threshold=0.5, clusters=5)
