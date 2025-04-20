@@ -108,58 +108,6 @@ def dbscan(df, eps=0.5, min_samples=10):
 
     return df_cluster
 
-def project_results_2d(X_train, y_train, probs, threshold=0.5, clusters=8): 
-    """
-    Use PCA to prepare a flattened version of the training data and our performance on the TRAINING data predictions
-
-    NOTE: utilty function written for the Kaggle comp
-    """
-    # TODO: rewrite before visualizing 2d based on NN, et c 
-    #X_train_2d, cluster_centers = apply_pca2(X_train, clusters)
-
-    # Create a subset just for training data, and then subsets for the classes
-    viz_df = X_train_2d.join(y_train, how='inner', rsuffix='_y') 
-
-    viz_df['preds'] = [ True if prob > threshold else False for prob in probs]
-    viz_df['result'] = viz_df.apply(lambda x: categorize_prediction(x.label, x.preds), axis=1)
-
-    return viz_df, cluster_centers
-
-# TODO: rewrite to work with the new methods above
-def visualize_results_2d(viz_df, cluster_centers, title, c_filter=None): 
-    """
-    Plot the 2d visualization, optionally with cluster centroids and/or a cluster 
-    centroid filter
-
-    NOTE: this is a utilty function written for the Kaggle comp
-    """
-    if c_filter is not None and c_filter != []: 
-        viz_df = viz_df[viz_df['cluster'].isin(c_filter)]
-
-    tp_sub = viz_df[viz_df['result'] == "TP"]
-    fn_sub = viz_df[viz_df['result'] == "FN"]
-    fp_sub = viz_df[viz_df['result'] == "FP"]
-    tn_sub = viz_df[viz_df['result'] == "TN"]
-    
-    fig = plt.figure()     
-    fig.set_size_inches(16,10) 
-    
-    plt.title(title)
-    plt.scatter(tn_sub['d1'], tn_sub['d2'], color='gray', marker='o', label='TN')     
-    plt.scatter(tp_sub['d1'], tp_sub['d2'], color='blue', marker='o', label='TP')     
-    plt.scatter(fn_sub['d1'], fn_sub['d2'], color='orange', marker='.', label='FN') 
-    plt.scatter(fp_sub['d1'], fp_sub['d2'], color='red', marker='.', label='FP') 
-
-    # Note we are not plotting the DBscan clusters here, something to improve on 
-    if cluster_centers is not None: 
-        for cluster in range(0,len(cluster_centers)):  
-            if c_filter is None or cluster in c_filter: 
-                center = cluster_centers[cluster] 
-                plt.scatter(center[0], center[1], color='yellow', marker='D', label='Centroids') 
-                plt.annotate(cluster, (center[0], center[1]), bbox=dict(boxstyle="round", fc="0.8"))
-
-    plt.show()
-
 def build_train_test_set(standard=True, statcast=True):
     """
     Load, transform, and apply engineered features, returning the training set. 
@@ -428,14 +376,13 @@ def build_candidates(nn_input_size):
     """
     candidates = [
         Pipeline([('model', DummyRegressor())]), # Control
-        Pipeline([('model', LinearRegression())]),
+        Pipeline([('scaler', StandardScaler()), ('model', LinearRegression())]),
         Pipeline([('model', Lasso(alpha=0.1))]), 
         Pipeline([('nn', NeuralNetRegressor(
             module=WARNet, 
             criterion=MSELoss, 
             optimizer=SGD, 
-            # TODO: find the knee in the curve based on the doctor output and set this to limit overfit
-            max_epochs=400, 
+            max_epochs=120, 
             lr=0.001, 
             module__n_input=nn_input_size, 
             module__n_hidden1=100, 
@@ -443,9 +390,9 @@ def build_candidates(nn_input_size):
             batch_size=7, 
             iterator_train__shuffle=True, 
             verbose=0))]),
-        # Pipeline([('poly', PolynomialFeatures()), ('model', LinearRegression())]),
-        # Pipeline([('model', RandomForestRegressor(max_depth=85, min_samples_leaf=6, n_estimators=25))]),
-        # Pipeline([('model', GradientBoostingRegressor(learning_rate=0.1))]),
+        Pipeline([('poly', PolynomialFeatures()), ('model', LinearRegression())]),
+        Pipeline([('model', RandomForestRegressor(max_depth=85, min_samples_leaf=6, n_estimators=25))]),
+        Pipeline([('model', GradientBoostingRegressor(learning_rate=0.1))]),
     ]
 
     return candidates
@@ -462,6 +409,9 @@ def search(X_train, y_train, splits=3, threshold=0.3, visualize=False):
     print(f"Algorithm search identified: {len(candidates)} below {threshold} MSE:")
 
 def build_results(y_test, preds): 
+    """
+    Assemble a results dataframe to simplify analysis
+    """
     errors = (y_test.to_numpy() - preds)
     results = pd.DataFrame() 
     results['player_id'] = y_test.index
@@ -474,6 +424,21 @@ def build_results(y_test, preds):
     
     return results
 
+def heatmap_results(results): 
+    """
+    Plot our errors vs true with density (color). 
+    """
+    fig, ax = plt.subplots(figsize=(10,8))
+    hb = ax.hexbin(x=results.error, y=results.war, gridsize=40, cmap='inferno')
+    xlim = results.error.min(), results.error.max()
+    ylim = results.war.min(), results.war.max()
+    ax.set(xlim=xlim, ylim=ylim)    
+    ax.set_xlabel("2024 WAR")
+    ax.set_ylabel("Prediction Error") 
+    ax.set_title('war heatmap')
+    cb = fig.colorbar(hb, ax=ax, label='counts')
+    plt.show()
+
 def evaluate(X_train, y_train, X_test, y_test, splits=5, visualize=False): 
     """
     Perform cross-validation on our candidate model pipelines and apply the winner to 
@@ -484,8 +449,11 @@ def evaluate(X_train, y_train, X_test, y_test, splits=5, visualize=False):
     if winner is not None: 
         print(f"Best model pipeline identified: {get_estimator_from_experiment(winner)} (mse: {mse}).")
 
-        if is_nn_experiment(winner):               
-            X, y = make_nn_set(X_test, y_test)
+        # See discussion above, unclear how to employ the SKL pipeline for scaling with skorch, manually 
+        # scale input before predictions for NN candidate pipelines
+        if is_nn_experiment(winner):        
+            X_test_scaled = scale(X_test)       
+            X, y = make_nn_set(X_test_scaled, y_test)
         else: 
             X = X_test
             y = y_test
@@ -500,16 +468,8 @@ def evaluate(X_train, y_train, X_test, y_test, splits=5, visualize=False):
         print(results.head())
         print(results.tail())
 
-        if visualize: 
-            
-            # TODO: plot the MSE of the best model 
-            plt.figure()
-            plt.scatter(y_test.index, results.error)
-
-            # TODO: make this work again and enhance?  ...  or just generate visuals in the notebook.
-            #viz_df, centroids = project_results_2d(X_train, y_train, preds, threshold=0.5, clusters=5)
-            #visualize_results_2d(viz_df, centroids, title=f"Pipeline: {str(get_estimator_from_experiment(winner))}", c_filter=[])
-        
+        if visualize:           
+            heatmap_results(results)          
     else: 
         print(f"No winner reported!")
 
