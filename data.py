@@ -1332,7 +1332,7 @@ def load_standard(year, dir_='data/'):
         "player_id_h": "player_id", 
         "WAR_h" : "WAR"
         }, inplace=True)
-    df.drop(["WAR_p"], axis=1, inplace=True)
+    df.drop(["WAR_p", "player_id_p"], axis=1, inplace=True)
     df = df[~df.player_id.isna()]
     df.set_index('player_id', inplace=True)
 

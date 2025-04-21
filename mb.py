@@ -57,11 +57,12 @@ def scale(df, range=(0,1), omit=[]):
     
     NOTE: utilty function written for the Kaggle comp
     """
-    for column in df.columns: 
+    df2 = df.copy()     
+    for column in df2.columns: 
         if column not in omit: 
-            df[column] = min_max_scale(df, column, (0,1))
+            df2[column] = min_max_scale(df2, column, (0,1))
 
-    return df
+    return df2
 
 def pca(df, components=2): 
     """
@@ -129,7 +130,6 @@ def build_train_test_set(standard=True, statcast=True):
 
     sc22 = load_statcast(2022) if statcast else None
     sc23 = load_statcast(2023) if statcast else None
-    sc24 = load_statcast(2024) if statcast else None
     
     if standard and not statcast:
         X_train = std22.drop(['WAR'], axis=1)
@@ -141,7 +141,7 @@ def build_train_test_set(standard=True, statcast=True):
         X_train = std22.drop(['WAR'], axis=1)
         X_train = X_train.join(sc22, how="left")
         X_test = std23.drop(['WAR'], axis=1)
-        X_test = X_test.join(sc24, how="left")
+        X_test = X_test.join(sc23, how="left")
 
     # We can only train on players for which we have a label, intersect our training data 
     # with the player IDs from the labelset. Similar logic for the test set.
@@ -163,12 +163,12 @@ def build_train_test_set(standard=True, statcast=True):
 
     return X_train, y_train, X_test, y_test
 
-def make_nn_set(X, y=None, scale_x=True): 
+def make_nn_set(X, y=None, scaler=None): 
     """
-    Transform to skorch/torch-compatible inputs
+    Transform to skorch/torch-compatible inputs, scale prior if a fit scaler if furnished
     """
 
-    Xnn = scale(X) if scale_x else X 
+    Xnn = pd.DataFrame(scaler.transform(X)) if scaler else X 
     Xnn = Xnn.to_numpy().astype(np.float32)
 
     ynn = None 
@@ -189,7 +189,8 @@ def run_experiments(experiments, X_train, y_train, threshold=0.5):
     """
     winners = []
 
-    X_train_nn, y_train_nn = make_nn_set(X_train, y_train)
+    scaler = StandardScaler().fit(X_train)
+    X_train_nn, y_train_nn = make_nn_set(X_train, y_train, scaler)
 
     for i, experiment in enumerate(experiments):         
 
@@ -242,7 +243,7 @@ def validate(X_train, y_train, candidates, splits=5):
     # experiment paradigm used elsewhere here. We should write an sklearn transformer that can handle the 
     # DataSet, but since our only transformation is scaling, just apply it manually here (external to the 
     # sklearn experimenet pipeline) as well as in the evaluation logic above (see run_experiments())
-    X_train_scaled = scale(X_train)
+    X_train_scaled = pd.DataFrame(StandardScaler().fit_transform(X_train)) 
     
     for candidate in candidates: 
 
@@ -252,8 +253,8 @@ def validate(X_train, y_train, candidates, splits=5):
             preds = None 
 
             if is_nn_experiment(candidate):                     
-                X, y = make_nn_set(X_train_scaled.iloc[train_ix], y_train.iloc[train_ix], scale_x=False)
-                X_val, _ = make_nn_set(X_train_scaled.iloc[test_ix], scale_x=False)
+                X, y = make_nn_set(X_train_scaled.iloc[train_ix], y_train.iloc[train_ix])
+                X_val, _ = make_nn_set(X_train_scaled.iloc[test_ix])
                 
             else: 
                 X = X_train.iloc[train_ix]
@@ -274,8 +275,7 @@ def validate(X_train, y_train, candidates, splits=5):
     
     # Retrain the winning pipeline on the full dataset
     if is_nn_experiment(winner): 
-        X, y = make_nn_set(X_train_scaled, y_train, scale_x=False)
-        X_val, _ = make_nn_set(X_train_scaled, scale_x=False)
+        X, y = make_nn_set(X_train_scaled, y_train)
     else: 
         X = X_train
         y = y_train
@@ -338,8 +338,8 @@ def build_experiments(nn_input_size):
     rf_hparams = { 'min_samples_leaf' : range(3,8,1), 'n_estimators': range(10,30,5), 'max_depth': range(10,20,2)}
     gb_hparams = { 'loss' : 'squared_error', 'learning_rate' : [(0.0001 * 10 ** x) for x in range(0, 4)]}
     nn_hparams = { 
-        'max_epochs' : [500], 
-        'lr': [1/(10**x) for x in range(2,4)], 
+        'max_epochs' : [200], 
+        'lr': [1/(10**x) for x in range(2,4)],
         'optimizer': [optim.SGD], #[ optim.SGD, optim.Adam ], 
         'criterion': [MSELoss], 
         # We don't have a lot of data here, batching may be faster but we lose information in the process - stick w/ 1
@@ -347,9 +347,9 @@ def build_experiments(nn_input_size):
         # Cue the torch DataLoader to shuffle training data
         'iterator_train__shuffle': [True], 
         'module__n_input' : [nn_input_size], 
-        'module__n_hidden1': range(80,120,10), 
-        'module__n_hidden2': range(0,45,10),
-        'module__n_hidden3': range(0,10,5),
+        'module__n_hidden1': range(80,120,20), 
+        'module__n_hidden2': range(0,25,10),
+        #'module__n_hidden3': range(0,10,5),
         # GridSearch implements cross validation, disable skorch internal holdout 
         'train_split': [None], 
         # Leverage cuda device if we find it/them
@@ -357,12 +357,12 @@ def build_experiments(nn_input_size):
         }
 
     experiments = [    
-        Pipeline([('grid', GridSearchCV(Ridge(), lr_hparams, scoring='neg_mean_squared_error', n_jobs=-1, error_score=-1))]), 
+        #Pipeline([('grid', GridSearchCV(Ridge(), lr_hparams, scoring='neg_mean_squared_error', n_jobs=-1, error_score=-1))]), 
         Pipeline([('gridnn', GridSearchCV(NeuralNetRegressor(module=WARNet, verbose=0), nn_hparams, scoring='neg_mean_squared_error', n_jobs=-1,error_score=-1))]), 
-        Pipeline([('grid', GridSearchCV(Lasso(), lr_hparams, scoring='neg_mean_squared_error', n_jobs=-1, error_score=-1))]), 
-        Pipeline([('scaler', StandardScaler()), ('grid', GridSearchCV(SVR(), sv_hparams, scoring='neg_mean_squared_error', n_jobs=-1, error_score=-1))]),
-        Pipeline([('grid', GridSearchCV(RandomForestRegressor(), rf_hparams, scoring='neg_mean_squared_error', n_jobs=-1, error_score=-1))]),
-        Pipeline([('grid', GridSearchCV(GradientBoostingRegressor(), gb_hparams, scoring='neg_mean_squared_error', n_jobs=-1,error_score=-1))]),
+        # Pipeline([('grid', GridSearchCV(Lasso(), lr_hparams, scoring='neg_mean_squared_error', n_jobs=-1, error_score=-1))]), 
+        # Pipeline([('scaler', StandardScaler()), ('grid', GridSearchCV(SVR(), sv_hparams, scoring='neg_mean_squared_error', n_jobs=-1, error_score=-1))]),
+        # Pipeline([('grid', GridSearchCV(RandomForestRegressor(), rf_hparams, scoring='neg_mean_squared_error', n_jobs=-1, error_score=-1))]),
+        # Pipeline([('grid', GridSearchCV(GradientBoostingRegressor(), gb_hparams, scoring='neg_mean_squared_error', n_jobs=-1,error_score=-1))]),
     ]
 
     return experiments
@@ -376,7 +376,6 @@ def build_candidates(nn_input_size):
     """
     candidates = [
         Pipeline([('model', DummyRegressor())]), # Control
-        Pipeline([('scaler', StandardScaler()), ('model', LinearRegression())]),
         Pipeline([('model', Lasso(alpha=0.1))]), 
         Pipeline([('nn', NeuralNetRegressor(
             module=WARNet, 
@@ -386,11 +385,9 @@ def build_candidates(nn_input_size):
             lr=0.001, 
             module__n_input=nn_input_size, 
             module__n_hidden1=100, 
-            #module__n_hidden2=5,
             batch_size=7, 
             iterator_train__shuffle=True, 
             verbose=0))]),
-        Pipeline([('poly', PolynomialFeatures()), ('model', LinearRegression())]),
         Pipeline([('model', RandomForestRegressor(max_depth=85, min_samples_leaf=6, n_estimators=25))]),
         Pipeline([('model', GradientBoostingRegressor(learning_rate=0.1))]),
     ]
@@ -430,14 +427,27 @@ def heatmap_results(results):
     """
     fig, ax = plt.subplots(figsize=(10,8))
     hb = ax.hexbin(x=results.error, y=results.war, gridsize=40, cmap='inferno')
-    xlim = results.error.min(), results.error.max()
-    ylim = results.war.min(), results.war.max()
+    
+    # We have a few outliers that are barely perceptable in the hexbin plot 
+    # reduce the max value here so we can better appreciate the density of the majority 
+    # of values
+    xlim = results.error.min(), results.error.max()-3
+    ylim = results.war.min(), results.war.max()-3
     ax.set(xlim=xlim, ylim=ylim)    
     ax.set_xlabel("2024 WAR")
     ax.set_ylabel("Prediction Error") 
-    ax.set_title('war heatmap')
+    ax.set_title('Target vs Prediction Error')
     cb = fig.colorbar(hb, ax=ax, label='counts')
     plt.show()
+
+def show_error_distribution(results): 
+    fig = plt.figure()
+    ax = fig.add_subplot()
+    ax.hist(results.error, bins=100)
+    ax.set_xlabel('Error')
+    ax.set_xticks(range(-8,9,1))
+    ax.set_ylabel('Count')
+    ax.set_title("Prediction Error Distribution")
 
 def evaluate(X_train, y_train, X_test, y_test, splits=5, visualize=False): 
     """
@@ -451,9 +461,9 @@ def evaluate(X_train, y_train, X_test, y_test, splits=5, visualize=False):
 
         # See discussion above, unclear how to employ the SKL pipeline for scaling with skorch, manually 
         # scale input before predictions for NN candidate pipelines
-        if is_nn_experiment(winner):        
-            X_test_scaled = scale(X_test)       
-            X, y = make_nn_set(X_test_scaled, y_test)
+        if is_nn_experiment(winner):
+            scaler = StandardScaler().fit(X_test)
+            X, y = make_nn_set(pd.DataFrame(scaler.transform(X_test)), y_test)
         else: 
             X = X_test
             y = y_test
@@ -470,6 +480,7 @@ def evaluate(X_train, y_train, X_test, y_test, splits=5, visualize=False):
 
         if visualize:           
             heatmap_results(results)          
+            show_error_distribution(results)
     else: 
         print(f"No winner reported!")
 
