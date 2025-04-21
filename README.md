@@ -33,5 +33,15 @@ A virtual environment is recommended. Python 3.13 and Skorch are not yet compati
 The app will print usage, to run the data and modeling pipeline for a full grid search: 
 
 ```
-python mb.py --conventional --statcast --splits=5
+usage: mb.py [-h] [-s | --search | --no-search | -e | --evaluate | --no-evaluate] [-k SPLITS] [-t THRESHOLD] [--conventional | --no-conventional] [--statcast | --no-statcast] [--visualize | --no-visualize]
+
+options:
+  -h, --help            show this help message and exit
+  -s, --search, --no-search
+  -e, --evaluate, --no-evaluate
+  -k SPLITS, --splits SPLITS
+  -t THRESHOLD, --threshold THRESHOLD
+  --conventional, --no-conventional
+  --statcast, --no-statcast
+  --visualize, --no-visualize
 ``` 
